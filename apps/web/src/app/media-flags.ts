@@ -1,6 +1,6 @@
 import type { Track } from '@muxplorer/shared';
 
-// Kodi Estuary names, ordered from specific profiles to their codec families.
+// Aeon Nox SiLVO artwork, ordered from specific profiles to their codec families.
 export function codecFlag(track: Track): string | null {
   const codec = track.codec.toLowerCase();
   const audio: [RegExp, string][] = [
@@ -19,17 +19,13 @@ export function codecFlag(track: Track): string | null {
     [/vorbis/, 'vorbis'],
     [/mp3|layer 3/, 'mp3'],
     [/mp2|layer 2/, 'mp2'],
-    [/alac/, 'alac'],
   ];
   const video: [RegExp, string][] = [
     [/hevc|h[\s./-]*265|mpeg-h/, 'hevc'],
     [/avc|h[\s./-]*264/, 'h264'],
     [/av1/, 'av1'],
     [/mpeg[\s-]*2/, 'mpeg2'],
-    [/mpeg[\s-]*4/, 'mpeg4'],
     [/vc[\s-]*1/, 'vc1'],
-    [/vp9/, 'vp9'],
-    [/vp8/, 'vp8'],
   ];
   const match = (track.type === 'audio' ? audio : track.type === 'video' ? video : []).find(
     ([pattern]) => pattern.test(codec),

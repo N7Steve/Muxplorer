@@ -569,17 +569,11 @@
         <mx-icon name="Layers" [size]="16" />Extracción temporal → revisión de pistas → remux →
         publicación. Reserva espacio para el temporal y el resultado.
       </div>
-      } @if(modal === 'review'){
-      <div class="track-toolbar">
-        <button class="button secondary compact" (click)="clearReviewNames()">
-          <mx-icon name="Eraser" [size]="16" />Limpiar nombres de todas las pistas
-        </button>
-      </div>
-      @for(file of reviewFiles(); track file.index){<label
+      } @if(modal === 'review'){ @for(file of reviewFiles(); track file.index){<label
         >Archivo de salida<span class="output-name"
           ><input [(ngModel)]="file.name" /><span>.mkv</span></span
         ></label
-      ><mx-tracks [tracks]="file.tracks" [showClear]="false" />}
+      ><mx-tracks [tracks]="file.tracks" />}
       <p class="muted">Destino: {{ display(reviewJob()!.destination!) }}</p>
       } @if(modal === 'properties'){
       <dl class="properties">
@@ -677,7 +671,15 @@
       }
     </div>
     <footer class="modal-footer">
-      @if(modal === 'delete'){<span class="footer-note"
+      @if(modal === 'review' || modal === 'remux'){
+      <button
+        class="button secondary clear-track-names"
+        (click)="clearTrackNames()"
+        [disabled]="busy()"
+      >
+        <mx-icon name="Eraser" [size]="16" />Limpiar nombres de todas las pistas
+      </button>
+      } @if(modal === 'delete'){<span class="footer-note"
         ><mx-icon name="LockKeyhole" [size]="13" />Acción permanente</span
       >} @if(modal === 'disc' && discEngine() === 'disc' && discPreparationId()){
       <button class="button secondary" (click)="close(); jobsOpen.set(true)">

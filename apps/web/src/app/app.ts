@@ -473,8 +473,12 @@ export class AppComponent {
     this.error.set('');
     this.dialog.set('review');
   }
-  clearReviewNames() {
-    for (const file of this.reviewFiles()) for (const track of file.tracks) track.name = '';
+  clearTrackNames() {
+    const tracks =
+      this.dialog() === 'review'
+        ? this.reviewFiles().flatMap((file) => file.tracks)
+        : this.tracks();
+    for (const track of tracks) track.name = '';
   }
   openDisc(job: Job) {
     this.jobsOpen.set(false);

@@ -230,6 +230,13 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
   await expect(modal.locator('.track-group')).toHaveCount(3);
   await expect(modal.getByLabel('Archivo de salida')).toHaveValue(base);
   await expect(modal.locator('.source-label')).toHaveCount(0);
+  await expect(modal.locator('.track-description').first()).not.toContainText('#');
+  await expect(modal.locator('.track-codec-details .codec-flag').first()).toBeVisible();
+  await expect(
+    modal
+      .locator('.modal-footer')
+      .getByRole('button', { name: 'Limpiar nombres de todas las pistas' }),
+  ).toBeVisible();
   await expect(modal.getByText('Sin transferencias por el navegador')).toHaveCount(0);
   const audioGroup = modal
     .locator('.track-group')

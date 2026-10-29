@@ -2153,10 +2153,16 @@ input[type='checkbox'] {
   margin-top: 10px;
 }
 
-.track-toolbar {
+.clear-track-names {
+  margin-right: auto;
+}
+.track-codec-details {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 14px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 7px;
+  font-size: 13px;
+  color: #a6b2ca;
 }
 .track-group {
   margin: 16px 0;
@@ -2199,8 +2205,8 @@ input[type='checkbox'] {
   flex-shrink: 0;
 }
 .codec-flag {
-  width: 64px;
-  height: 34px;
+  width: 100px;
+  height: 56px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -2224,4 +2230,14 @@ input[type='checkbox'] {
 }
 .modal-footer .button {
   font-size: 14px;
+}
+@media (max-width: 640px) {
+  .modal-footer .button {
+    white-space: normal;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .modal-footer .clear-track-names {
+    flex: 1;
+  }
 }
