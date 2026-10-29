@@ -9,7 +9,6 @@ services:
       TZ: Europe/Madrid
       JOB_CONCURRENCY: '1'
       COOKIE_SECURE: 'false'
-      MAKEMKV_ACCEPT_EULA: 'false'
     volumes:
       - /mnt/StevePool/Steve/Downloads:/data/downloads:rw
       - /mnt/PlexPool/PlexMedia:/data/plex:rw

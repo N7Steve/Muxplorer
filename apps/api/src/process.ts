@@ -81,7 +81,8 @@ export class Processes {
           stop();
         }
         pending += decoded;
-        const lines = pending.split(/[\r\n]/);
+        // 7-Zip redraws its progress using backspaces, without emitting a newline.
+        const lines = pending.split(/[\r\n\b]/);
         pending = lines.pop() ?? '';
         for (const line of lines)
           if (line) {

@@ -15,7 +15,6 @@ const env = z
     SANDBOX_BIN: z.string().default('mux-sandbox'),
     RENAME_BIN: z.string().default('mux-rename'),
     MAKEMKV_HOME: z.string().optional(),
-    MAKEMKV_ACCEPT_EULA: z.enum(['true', 'false']).default('false'),
     LICENSE_FILE: z.string().default('/app/licenses/makemkv.txt'),
   })
   .parse(process.env);

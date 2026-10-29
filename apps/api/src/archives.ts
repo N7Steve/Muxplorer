@@ -14,6 +14,18 @@ export interface ExtractRequest {
   folder?: string;
   password?: string;
 }
+export class SevenZipProgress {
+  private latest = -1;
+  constructor(private readonly report: (percent: number) => void) {}
+  accept(line: string) {
+    const match = /^\s*(\d{1,3})%(?:\s|$)/.exec(line);
+    if (!match) return;
+    const percent = Number(match[1]);
+    if (percent > 100 || percent <= this.latest) return;
+    this.latest = percent;
+    this.report(percent);
+  }
+}
 export function validateArchiveListing(listing: string) {
   const blocks = listing.split(/\r?\n\r?\n/).filter((block) => /^Path = /m.test(block));
   const seen = new Set<string>();
@@ -56,40 +68,53 @@ export class Archives {
         ...options,
         ...extra,
       });
-    const extractOne = async (archive: string, output: string) => {
+    const phases = /\.(tar\.(gz|xz)|tgz)$/i.test(source) ? 2 : 1;
+    const extractOne = async (archive: string, output: string, phase: number) => {
       context.update('Inspeccionando las rutas del archivo comprimido');
       const listing = await run(['l', '-slt', '-ba', `-p${password}`, '--', archive], {
         captureLimit: 32 * 1024 * 1024,
       });
       validateArchiveListing(listing.stdout);
+      const stage =
+        phases === 2 ? `Extrayendo con 7-Zip · Etapa ${phase + 1}/2` : 'Extrayendo con 7-Zip';
+      context.update(stage, (phase / phases) * 100);
+      const progress = new SevenZipProgress((percent) => {
+        if (percent === 100 && phase === phases - 1)
+          context.update('Finalizando la extracción con 7-Zip');
+        else context.update(stage, ((phase + percent / 100) / phases) * 100);
+      });
       await run(
         ['x', '-y', '-aos', '-bsp1', '-bso1', `-p${password}`, `-o${output}`, '--', archive],
         {
           onLine: (line) => {
-            const match = /(?:^|\s)(\d+)%/.exec(line);
-            if (match) context.update('Extrayendo con 7-Zip', Number(match[1]));
+            progress.accept(line);
           },
         },
       );
+      context.update('Validando rutas y archivos extraídos');
+      context.signal.throwIfAborted();
       await this.paths.tree(output);
     };
     try {
       const contents = path.join(staging, 'contents');
       await mkdir(contents);
-      await extractOne(source, contents);
+      await extractOne(source, contents, 0);
       // 7-Zip unwraps gzip/xz first; tar must then be unpacked explicitly.
-      if (/\.(tar\.(gz|xz)|tgz)$/i.test(source)) {
+      if (phases === 2) {
         const inner = await readdir(contents);
         if (inner.length !== 1 || !(await lstat(path.join(contents, inner[0]))).isFile())
           problem('Estructura tar comprimida no compatible.');
         const expanded = path.join(staging, 'expanded');
         await mkdir(expanded);
-        await extractOne(path.join(contents, inner[0]), expanded);
+        await extractOne(path.join(contents, inner[0]), expanded, 1);
         await rm(contents, { recursive: true });
         await this.files.renameExclusive(expanded, contents);
       }
       context.signal.throwIfAborted();
+      context.update('Esperando para publicar los archivos extraídos');
       await this.files.exclusive(async () => {
+        context.signal.throwIfAborted();
+        context.update('Publicando los archivos extraídos');
         if (request.folder) {
           context.result(await this.files.publish(contents, request.destination, request.folder));
           return;
@@ -97,7 +122,6 @@ export class Archives {
         const names = await readdir(contents);
         for (const name of names)
           await this.files.absent(childLocation(request.destination, safeName(name)));
-        context.update('Publicando los elementos extraídos');
         // Commit each top-level entry atomically. Already published entries are recorded if a later entry fails.
         for (const name of names)
           context.result(
@@ -105,6 +129,7 @@ export class Archives {
           );
       });
     } finally {
+      context.update('Limpiando archivos temporales');
       await rm(staging, { recursive: true, force: true });
     }
   }

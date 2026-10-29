@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-docker-'));
 const name = `muxplorer-smoke-${Date.now()}`;
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.0';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.1';
 const keep = process.env.MUXPLORER_KEEP_TEST_CONTAINER === 'true';
 const password = 'Muxplorer-test-password-2026';
 const username = 'mux-admin';
@@ -338,6 +338,8 @@ try {
     await pause(50);
   }
   assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.progress, null);
+  assert.equal(cancelled.error, undefined);
   assert.equal(
     docker('exec', name, 'stat', '-c', '%s', '/data/downloads/cancel-fixture.bin'),
     String(512 * 1024 * 1024),
@@ -363,6 +365,9 @@ try {
   const tools = await request('system');
   assert.ok(tools.tools.sevenZip.available);
   assert.ok(tools.tools.mkvmerge.available);
+  assert.ok(tools.tools.makemkv.available, JSON.stringify(tools.tools.makemkv));
+  assert.match(tools.tools.makemkv.version, /MakeMKV v/);
+  docker('exec', name, 'test', '-x', '/usr/bin/makemkvcon');
   assert.equal(docker('exec', name, 'id', '-u'), '1000');
   for (let attempt = 0; attempt < 50; attempt++) {
     if (docker('inspect', '--format', '{{.State.Health.Status}}', name) === 'healthy') break;
@@ -405,6 +410,7 @@ try {
           'cancelled streaming copy preserves source',
           'active job interrupted on restart',
           'non-root',
+          'MakeMKV available automatically without activation dialog',
           'healthcheck',
         ],
       },

@@ -9,7 +9,6 @@ import { Mkv } from './mkv';
 import { JobContext, NeedsReview } from './jobs';
 import { config } from './config';
 import { problem } from './errors';
-import { Store } from './store';
 export interface MakeRequest {
   source: Location;
   destination: Location;
@@ -94,7 +93,6 @@ export class MakeMkv implements OnModuleInit {
     private readonly files: Files,
     private readonly processes: Processes,
     private readonly mkv: Mkv,
-    private readonly store: Store,
   ) {}
   async onModuleInit() {
     const folder = path.join(this.env().HOME, '.MakeMKV');
@@ -109,19 +107,7 @@ export class MakeMkv implements OnModuleInit {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
   }
-  accepted() {
-    return (
-      config.MAKEMKV_ACCEPT_EULA === 'true' || this.store.get('makemkvEulaAccepted') === '2.0.0'
-    );
-  }
-  acceptLicense() {
-    this.store.set('makemkvEulaAccepted', '2.0.0');
-  }
-  private requireLicense() {
-    if (!this.accepted())
-      problem('Lee y acepta la licencia de MakeMKV desde Configuración antes de ejecutarlo.');
-  }
-  private env() {
+  env() {
     return { ...process.env, HOME: config.MAKEMKV_HOME ?? path.join(config.CONFIG_DIR, 'makemkv') };
   }
   async source(location: Location) {
@@ -136,7 +122,6 @@ export class MakeMkv implements OnModuleInit {
     return source;
   }
   async inspect(location: Location): Promise<Disc> {
-    this.requireLicense();
     const source = await this.source(location);
     const result = await this.processes.run(
       config.MAKEMKV_BIN,

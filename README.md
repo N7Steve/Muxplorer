@@ -56,7 +56,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.0 .`, exporta con `docker save -o muxplorer-0.1.0.tar muxplorer:0.1.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.0` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.1 .`, exporta con `docker save -o muxplorer-0.1.1.tar muxplorer:0.1.1`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.1` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -73,29 +73,13 @@ En TrueNAS prepara las ACL para que esa identidad pueda listar, leer, crear, ren
 
 Un volumen nuevo de `/config` se inicializa desde la imagen con propietario 1000:1000. Si eliges otro UID, prepara ese volumen con el propietario/ACL adecuados antes de arrancar. También puedes sustituir únicamente el volumen de configuración por un dataset de aplicaciones con ACL preparadas. No cambies permisos del árbol multimedia como parte de la instalación.
 
-## MakeMKV: distribución, licencia y activación
+## MakeMKV integrado
 
-La imagen obtiene **MakeMKV 2.0.0** de su [distribución oficial para Linux](https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224), compila las bibliotecas OSS sin GUI e incluye los binarios y datos Linux **sin modificaciones**, junto con el EULA completo. Se verifican SHA-256 fijados en el Dockerfile. El EULA del paquete permite expresamente reempaquetar la parte Linux como paquete específico de distribución conservando los archivos y la licencia. No se incluyen claves ni mecanismos de activación alternativos.
+MakeMKV 2.0.0 se instala automáticamente en la misma imagen, con sus bibliotecas y permisos de ejecución para el usuario del contenedor. Está habilitado desde el primer arranque: no hay que crear otra imagen, definir variables de aceptación ni confirmar una pantalla adicional. La construcción y las pruebas ejecutan el motor como usuario sin privilegios para detectar errores de instalación antes de publicar.
 
-MakeMKV permanece deshabilitado hasta que el administrador lee y acepta el EULA desde **Configuración → Leer licencia completa → Habilitar MakeMKV**. La aceptación se conserva en SQLite para esta versión. También puedes establecer `MAKEMKV_ACCEPT_EULA=true` si has leído y aceptado esas condiciones. Construir la imagen no fabrica un archivo de aceptación del instalador.
+La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings.conf`, conservando los ajustes existentes. El valor `app_DefaultSelectionString = "+sel:all"` permite conservar las pistas durante la extracción y revisarlas después. El análisis del origen muestra los errores reales del motor cuando una operación no puede completarse.
 
-La licencia de uso/activación del programa es independiente de esa aceptación. Guarda una clave válida, obtenida legítimamente, en el volumen persistente:
-
-```text
-/config/makemkv/.MakeMKV/settings.conf
-```
-
-Ejemplo de contenido (sustituye el marcador por tu propia clave válida, sin subirla a Git):
-
-```text
-app_DefaultSelectionString = "+sel:all"
-app_UpdateEnable = "0"
-app_Key = "TU_CLAVE_VALIDA"
-```
-
-La aplicación crea las primeras dos líneas si el archivo no existe y no sobrescribe una configuración existente. Mantén `+sel:all`: el pipeline exige preservar las pistas durante la extracción para revisarlas después. No utiliza switches imaginarios de selección por stream. El HOME de MakeMKV apunta a `/config/makemkv`.
-
-Configuración muestra la versión que el ejecutable declara después de aceptar el EULA. El análisis del disco y los trabajos muestran errores de instalación, licencia, expiración o lectura devueltos por el motor. No se extraen claves beta de Internet. Las versiones temporales pueden expirar; actualiza versión y hashes de descarga cuando corresponda. Consulta la [documentación robot oficial](https://www.makemkv.com/developers/usage.txt) y el [manual de mkvmerge](https://mkvtoolnix.download/doc/mkvmerge.html) para las interfaces utilizadas.
+Los binarios originales se obtienen de la [distribución oficial para Linux](https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224), con hashes SHA-256 verificados. Las bibliotecas OSS se compilan sin escritorio y se conservan los avisos y licencias originales en la imagen. Interfaces empleadas: [modo robot de MakeMKV](https://www.makemkv.com/developers/usage.txt) y [mkvmerge](https://mkvtoolnix.download/doc/mkvmerge.html).
 
 ## Integridad, temporales y reinicios
 
@@ -125,7 +109,6 @@ Los datasets se consideran almacenamiento de confianza compartido con tus aplica
 | `CONFIG_DIR`                                  | `/config`                             | SQLite, administrador y configuración persistente                      |
 | `JOB_CONCURRENCY`                             | `1`                                   | Máximo de trabajos pesados, 1–2                                        |
 | `COOKIE_SECURE`                               | `false`                               | `true` cuando se accede mediante HTTPS                                 |
-| `MAKEMKV_ACCEPT_EULA`                         | `false`                               | Aceptación explícita del propietario; alternativa a la interfaz        |
 | `MAKEMKV_HOME`                                | `/config/makemkv`                     | Configuración del motor y activación                                   |
 | `SEVENZIP_BIN`, `MKVMERGE_BIN`, `MAKEMKV_BIN` | `7zz`, `mkvmerge`, `makemkvcon`       | Rutas de ejecutables para desarrollo                                   |
 | `SANDBOX_BIN`, `RENAME_BIN`                   | `mux-sandbox`, `mux-rename`           | Helpers Linux incluidos en la imagen                                   |
@@ -161,17 +144,17 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.0 .
+docker build -t muxplorer:0.1.1 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance
 ```
 
-`test:docker` crea un contenedor desechable con **dos tmpfs aislados** para fixtures. Verifica autenticación, CSRF, traversal/symlinks, operaciones de archivos, conflictos, extracción real ZIP/RAR/7z protegido/7z multipartes/tar.gz, remux con varias fuentes, nombres Unicode, selección de pistas y flags, SSE, historial después de reiniciar, UID sin root y healthcheck. Genera archivos pequeños y un RAR sin compresión válido; no accede al NAS. El contenedor se elimina al terminar. `MUXPLORER_KEEP_TEST_CONTAINER=true` permite retenerlo para depuración, con credenciales de prueba mostradas en la salida; no lo uses con datos reales.
+`test:docker` crea un contenedor desechable con **dos tmpfs aislados** para fixtures. Verifica autenticación, CSRF, traversal/symlinks, operaciones de archivos, conflictos, extracción real ZIP/RAR/7z protegido/7z multipartes/tar.gz, remux con varias fuentes, nombres Unicode, selección de pistas y flags, SSE, historial después de reiniciar, UID sin root y healthcheck. Genera archivos pequeños y un RAR sin compresión válido; además se ha comprobado localmente la extracción de un RAR multivolumen de 256 MiB repartido en 17 partes; no accede al NAS. El contenedor se elimina al terminar. `MUXPLORER_KEEP_TEST_CONTAINER=true` permite retenerlo para depuración, con credenciales de prueba mostradas en la salida; no lo uses con datos reales.
 
-`test:acceptance` añade cinco pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
+`test:acceptance` añade seis pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
 
-La prueba del pipeline MakeMKV usa procesos simulados: comprueba checkpoint, IDs reales del MKV generado, revisión obligatoria y publicación tras remux. **No se ha validado una extracción completa de una ISO/BDMV real con MakeMKV activado.** Esa validación requiere una fuente de prueba y la aceptación/activación legítima del propietario.
+La prueba del pipeline MakeMKV usa procesos simulados: comprueba checkpoint, IDs reales del MKV generado, revisión obligatoria y publicación tras remux. **No se ha validado una extracción completa de una ISO/BDMV real con MakeMKV activado.** Esa validación requiere una fuente de prueba y el origen multimedia correspondiente.
 
 ## Problemas frecuentes y límites del MVP
 
@@ -182,9 +165,9 @@ La prueba del pipeline MakeMKV usa procesos simulados: comprueba checkpoint, IDs
 - **Faltan partes RAR o contraseña incorrecta:** conserva todos los volúmenes y empieza por el primero. El error y la salida del motor aparecen en el trabajo; las contraseñas se redactan y no se persisten.
 - **Idioma rechazado:** utiliza un código BCP 47/ISO compatible, por ejemplo `es`, `en`, `ja` o `und`.
 - **MakeMKV no encuentra títulos:** revisa licencia/activación, integridad de la ISO y estructura `BDMV/STREAM`/`BDMV/PLAYLIST`. No se accede a unidades ópticas del host.
-- **Progreso sin porcentaje:** se muestra la etapa; no se inventa una estimación cuando el motor no proporciona datos fiables.
+- **Progreso de extracción:** se leen en directo las actualizaciones de consola de 7-Zip, incluidos sus redibujados. La validación, publicación y limpieza se muestran como etapas sin un porcentaje inventado. Al cancelar se retira el porcentaje incompleto; las respuestas antiguas no pueden reemplazar estados más recientes.
 - **Reinicio durante operación:** revisa resultados registrados y limpia los temporales privados del trabajo antes de repetirlo. No hay reanudación automática de copias parciales.
 - El explorador no calcula tamaños recursivos de carpetas, no indexa la biblioteca y no ofrece vista de miniaturas. El listado completo se ordena en memoria; no hay paginación/virtualización para carpetas con cientos de miles de entradas.
-- Solo se soporta la imagen amd64 actual. No se han probado archivos de 100 GB, RAR multipartes reales, todos los códecs ni combinaciones de discos protegidos. El soporte de variantes depende de los motores incluidos.
+- Solo se soporta la imagen amd64 actual. No se han probado archivos de 100 GB, todos los códecs ni combinaciones de discos protegidos. El soporte de variantes depende de los motores incluidos.
 - Los tests locales de Windows usan una publicación alternativa para directorios; la producción Linux usa el helper atómico y se prueba por Docker.
 - No hay transcodificación, reproducción avanzada, edición por timeline, Plex/Sonarr/Radarr, multiusuario ni automatizaciones.

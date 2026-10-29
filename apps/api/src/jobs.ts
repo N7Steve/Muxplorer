@@ -25,6 +25,7 @@ export class Jobs implements OnModuleDestroy {
   readonly shutdown = new Subject<void>();
   private readonly handlers = new Map<JobKind, Handler>();
   private readonly running = new Map<string, AbortController>();
+  private readonly active = new Map<string, Job>();
   private readonly secrets = new Map<string, unknown>();
   private stopped = false;
   constructor(private readonly store: Store) {
@@ -39,6 +40,7 @@ export class Jobs implements OnModuleDestroy {
     this.handlers.set(kind, handler);
   }
   private save(job: Job, payload?: unknown) {
+    job.revision = (job.revision ?? 0) + 1;
     job.updatedAt = new Date().toISOString();
     if (payload !== undefined)
       this.store.db
@@ -97,11 +99,19 @@ export class Jobs implements OnModuleDestroy {
   cancel(id: string) {
     const job = this.get(id);
     if (job.status === 'running') {
+      const current = this.active.get(id);
+      if (current) {
+        current.stage = 'Cancelando la operación y limpiando temporales';
+        current.progress = null;
+        this.save(current);
+      }
       this.running.get(id)?.abort();
       return;
     }
     if (job.status === 'pending' || job.status === 'interrupted') {
       job.status = 'cancelled';
+      job.progress = null;
+      delete job.error;
       job.stage = 'Cancelado. Los temporales retenidos pueden limpiarse desde el panel.';
       this.secrets.delete(id);
       this.save(job);
@@ -135,6 +145,7 @@ export class Jobs implements OnModuleDestroy {
       if (!handler) continue;
       const controller = new AbortController();
       this.running.set(job.id, controller);
+      this.active.set(job.id, job);
       job.status = 'running';
       job.stage = 'Preparando';
       this.save(job);
@@ -142,6 +153,7 @@ export class Jobs implements OnModuleDestroy {
         id: job.id,
         signal: controller.signal,
         update: (stage, progress = null) => {
+          if (controller.signal.aborted) return;
           job.stage = stage;
           job.progress = progress === null ? null : Math.max(0, Math.min(100, progress));
           this.save(job);
@@ -175,7 +187,13 @@ export class Jobs implements OnModuleDestroy {
               : controller.signal.aborted
                 ? 'cancelled'
                 : 'failed';
-            job.error = errorText(error);
+            if (job.status === 'cancelled') {
+              delete job.error;
+              job.progress = null;
+            } else {
+              job.error = errorText(error);
+              if (job.status === 'interrupted') job.progress = null;
+            }
             job.stage =
               job.status === 'cancelled'
                 ? 'Cancelado'
@@ -188,6 +206,7 @@ export class Jobs implements OnModuleDestroy {
           this.save(job);
           this.secrets.delete(job.id);
           this.running.delete(job.id);
+          this.active.delete(job.id);
           this.drain();
         });
     }

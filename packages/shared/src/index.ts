@@ -78,6 +78,7 @@ export interface ReviewFile {
   tracks: Track[];
 }
 export interface Job {
+  revision?: number;
   id: string;
   kind: JobKind;
   status: JobStatus;
@@ -96,8 +97,6 @@ export interface ToolStatus {
   available: boolean;
   version?: string;
   error?: string;
-  installed?: boolean;
-  licenseRequired?: boolean;
 }
 export interface SystemStatus {
   tools: Record<'sevenZip' | 'mkvmerge' | 'makemkv', ToolStatus>;

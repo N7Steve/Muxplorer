@@ -80,7 +80,6 @@ export class AppComponent {
   archivePassword = '';
   createSubfolder = true;
   transfer: 'copy' | 'move' = 'copy';
-  licenseAccepted = false;
   readonly bytes = bytes;
   readonly display = displayLocation;
   readonly toolKeys = ['sevenZip', 'mkvmerge', 'makemkv'] as const;
@@ -160,15 +159,6 @@ export class AppComponent {
     await this.api.request('auth/logout', {});
     this.api.disconnect();
     this.authenticated.set(false);
-  }
-  async acceptLicense() {
-    try {
-      await this.api.request('makemkv/accept-license', { accepted: true });
-      this.api.system.set(await this.api.request('system'));
-      this.api.toast('Licencia registrada. Puedes utilizar MakeMKV con una activación válida.');
-    } catch (error) {
-      this.api.toast(error);
-    }
   }
   panel() {
     return this.active() === 'left' ? this.left() : this.right();
@@ -419,7 +409,7 @@ export class AppComponent {
       this.dialog.set(null);
       this.archivePassword = '';
       this.api.toast(message);
-      this.api.jobs.set(await this.api.request<Job[]>('jobs'));
+      await this.api.syncJobs();
     } catch (error) {
       this.error.set(this.message(error));
     } finally {
@@ -448,7 +438,7 @@ export class AppComponent {
   async cancel(job: Job) {
     try {
       await this.api.request(`jobs/${job.id}/cancel`, {});
-      this.api.jobs.set(await this.api.request<Job[]>('jobs'));
+      await this.api.syncJobs();
     } catch (error) {
       this.api.toast(error);
     }
@@ -456,7 +446,7 @@ export class AppComponent {
   async cleanup(job: Job) {
     try {
       await this.api.request(`jobs/${job.id}/cleanup`, {});
-      this.api.jobs.set(await this.api.request<Job[]>('jobs'));
+      await this.api.syncJobs();
       this.api.toast('Temporales del trabajo eliminados.');
     } catch (error) {
       this.api.toast(error);

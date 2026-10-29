@@ -1,5 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type { Entry, Job, Location, Root, SystemStatus } from '@muxplorer/shared';
+import { mergeJobs } from './job-state';
 @Injectable({ providedIn: 'root' })
 export class Api {
   readonly jobs = signal<Job[]>([]);
@@ -30,9 +31,13 @@ export class Api {
       `files?root=${location.root}&path=${encodeURIComponent(location.path)}`,
     );
   }
+  async syncJobs() {
+    const jobs = await this.request<Job[]>('jobs');
+    this.jobs.update((current) => mergeJobs(current, jobs));
+  }
   async connect() {
     this.roots.set(await this.request<Root[]>('roots'));
-    this.jobs.set(await this.request<Job[]>('jobs'));
+    await this.syncJobs();
     void this.request<SystemStatus>('system')
       .then((system) => this.system.set(system))
       .catch((error) => this.toast(error));
@@ -40,8 +45,7 @@ export class Api {
     this.stream = new EventSource('/api/jobs/events');
     this.stream.onopen = () => {
       this.connection.set('connected');
-      void this.request<Job[]>('jobs').then((jobs) => {
-        this.jobs.set(jobs);
+      void this.syncJobs().then(() => {
         this.revision.update((r) => r + 1);
       });
     };
@@ -50,11 +54,8 @@ export class Api {
       const job = JSON.parse(event.data) as Job;
       if (!job.id) return;
       const previous = this.jobs().find((j) => j.id === job.id);
-      this.jobs.update((jobs) =>
-        [job, ...jobs.filter((j) => j.id !== job.id)]
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .slice(0, 500),
-      );
+      this.jobs.update((jobs) => mergeJobs(jobs, [job]));
+      if (this.jobs().find((current) => current.id === job.id) !== job) return;
       if (job.status === 'completed' && previous?.status !== 'completed') {
         this.revision.update((r) => r + 1);
         this.toast('Operación completada. El resultado está disponible.');

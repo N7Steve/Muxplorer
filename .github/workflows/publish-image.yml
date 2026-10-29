@@ -74,7 +74,10 @@ jobs:
       - name: Publish the tested image
         run: |
           docker tag muxplorer:ci "$IMAGE:sha-$REVISION"
+          VERSION=$(node -p "require('./apps/api/package.json').version")
+          docker tag muxplorer:ci "$IMAGE:$VERSION"
           docker tag muxplorer:ci "$IMAGE:latest"
           docker push "$IMAGE:sha-$REVISION"
+          docker push "$IMAGE:$VERSION"
           docker push "$IMAGE:latest"
-          echo "Published $IMAGE:latest and $IMAGE:sha-$REVISION" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published $IMAGE:$VERSION, $IMAGE:latest and $IMAGE:sha-$REVISION" >> "$GITHUB_STEP_SUMMARY"

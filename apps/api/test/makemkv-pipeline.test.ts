@@ -8,7 +8,6 @@ import { MakeMkv, MakeRequest } from '../src/makemkv';
 import { Mkv } from '../src/mkv';
 import { Paths } from '../src/paths';
 import { Files } from '../src/files';
-import { Store } from '../src/store';
 import { Processes, ProcessOptions } from '../src/process';
 import { config } from '../src/config';
 import { JobContext, NeedsReview } from '../src/jobs';
@@ -16,7 +15,6 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-make-'));
   const previousHome = config.MAKEMKV_HOME;
   config.MAKEMKV_HOME = path.join(temporary, 'home');
-  const store = new Store(path.join(temporary, 'config'));
   try {
     const downloads = path.join(temporary, 'downloads'),
       plex = path.join(temporary, 'plex');
@@ -71,15 +69,8 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
         await writeFile(output, 'verified remux result');
       }
     }
-    const engine = new MakeMkv(
-      paths,
-      files,
-      processes,
-      new FakeMkv(paths, files, processes),
-      store,
-    );
+    const engine = new MakeMkv(paths, files, processes, new FakeMkv(paths, files, processes));
     await engine.onModuleInit();
-    engine.acceptLicense();
     let checkpoint: MakeRequest | undefined;
     const results: string[] = [];
     const context: JobContext = {
@@ -139,7 +130,6 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
     assert.deepEqual(await readdir(plex), ['Movie.mkv']);
   } finally {
     config.MAKEMKV_HOME = previousHome;
-    store.close();
     await rm(temporary, { recursive: true, force: true });
   }
 });

@@ -14,14 +14,14 @@ import {
 import type { Request, Response } from 'express';
 import { interval, map, merge, takeUntil, takeWhile } from 'rxjs';
 import { z } from 'zod';
-import { readFile, access } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { Auth, AuthGuard } from './auth';
 import { Files } from './files';
 import { Paths } from './paths';
 import { Jobs } from './jobs';
 import { Archives, ExtractRequest } from './archives';
 import { Mkv } from './mkv';
-import { MakeMkv, MakeRequest } from './makemkv';
+import { MakeMkv, MakeRequest, robotFields } from './makemkv';
 import { Processes } from './process';
 import { config } from './config';
 import { errorText, problem } from './errors';
@@ -145,11 +145,6 @@ export class ApiController implements OnModuleInit {
   @Get('makemkv/license') async license(@Res() res: Response) {
     res.type('text/plain').send(await readFile(config.LICENSE_FILE, 'utf8'));
   }
-  @Post('makemkv/accept-license') accept(@Body() body: unknown) {
-    contract.parse(z.object({ accepted: z.literal(true) }).strict(), body);
-    this.make.acceptLicense();
-    return { ok: true };
-  }
   @Post('makemkv/convert') convert(@Body() body: unknown) {
     const data = contract.parse(contract.make, body);
     return this.jobs.enqueue('makemkv', data, [data.source], data.destination);
@@ -215,32 +210,24 @@ export class ApiController implements OnModuleInit {
         ['mkvmerge', config.MKVMERGE_BIN, ['--version']],
         ['makemkv', config.MAKEMKV_BIN, ['-r', '--noscan', '--cache=1', 'info', 'disc:9999']],
       ].map(async ([key, binary, args]) => {
-        if (key === 'makemkv' && !this.make.accepted()) {
-          const installed = await access('/usr/bin/makemkvcon')
-            .then(() => true)
-            .catch(() => false);
-          return [
-            key,
-            {
-              available: false,
-              installed,
-              licenseRequired: true,
-              error: 'Lee y acepta la licencia de MakeMKV para habilitarlo.',
-            },
-          ];
-        }
         try {
           const result = await this.processes.run(binary as string, args as string[], {
             timeout: 15_000,
             allowedCodes: [0, 1],
+            ...(key === 'makemkv' ? { env: this.make.env() } : {}),
           });
+          const versionLine =
+            result.stdout.split(/\r?\n/).find((line) => /7-Zip|mkvmerge|MakeMKV/i.test(line)) ??
+            result.stdout.slice(0, 180);
+          const version =
+            key === 'makemkv' && versionLine.startsWith('MSG:')
+              ? (robotFields(versionLine.slice(4))[3] ?? versionLine)
+              : versionLine;
           return [
             key,
             {
               available: true,
-              version:
-                result.stdout.split(/\r?\n/).find((line) => /7-Zip|mkvmerge|MakeMKV/i.test(line)) ??
-                result.stdout.slice(0, 180),
+              version,
             },
           ];
         } catch (error) {

@@ -39,6 +39,22 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Entrar en Muxplorer' }).click();
   await expect(page.getByRole('heading', { name: 'Explorador de archivos.' })).toBeVisible();
 });
+test('all media engines are available automatically without an extra MakeMKV setup screen', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
+  const modal = page.getByRole('dialog');
+  await expect(modal.getByText('Muxplorer 0.1.1', { exact: false })).toBeVisible();
+  await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
+    'Disponible',
+  );
+  await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
+    'MakeMKV v2.0.0',
+  );
+  await expect(modal.getByRole('button', { name: 'Habilitar MakeMKV' })).toHaveCount(0);
+  await expect(modal.getByText('MakeMKV requiere instalación', { exact: false })).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/visual/tools.png', fullPage: true });
+});
 test('desktop explorer, multimedia context menus and exact external-track selection work', async ({
   page,
 }) => {

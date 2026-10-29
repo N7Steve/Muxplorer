@@ -25,8 +25,7 @@ ARG MAKEMKV_BIN_SHA256=f1265e74875a186efdfbbbec7459a64e969033515e53cbc4d805f0a37
 RUN curl -fL "https://www.makemkv.com/download/makemkv-oss-${MAKEMKV_VERSION}.tar.gz" -o oss.tar.gz && echo "$MAKEMKV_OSS_SHA256  oss.tar.gz" | sha256sum -c - && curl -fL "https://www.makemkv.com/download/makemkv-bin-${MAKEMKV_VERSION}.tar.gz" -o bin.tar.gz && echo "$MAKEMKV_BIN_SHA256  bin.tar.gz" | sha256sum -c - && tar -xzf oss.tar.gz && tar -xzf bin.tar.gz
 RUN cd makemkv-oss-${MAKEMKV_VERSION} && ./configure --disable-gui --prefix=/usr && make -j2 && make install DESTDIR=/install
 # Repackage the unchanged Linux binary + data + EULA under the explicit Linux-package exception.
-# No EULA acceptance is manufactured during the build; execution is gated by the application.
-RUN mkdir -p /install/usr/bin /install/usr/share/MakeMKV /licenses && cp makemkv-bin-${MAKEMKV_VERSION}/bin/amd64/makemkvcon /install/usr/bin/ && cp makemkv-bin-${MAKEMKV_VERSION}/src/share/* /install/usr/share/MakeMKV/ && cp makemkv-bin-${MAKEMKV_VERSION}/src/eula_en_linux.txt /licenses/makemkv.txt && cp makemkv-oss-${MAKEMKV_VERSION}/License.txt /licenses/makemkv-oss.txt && cp makemkv-oss-${MAKEMKV_VERSION}/mmccextr/License.txt /licenses/mmccextr.txt && cp sevenzip/License.txt /licenses/7zip.txt
+RUN mkdir -p /install/usr/bin /install/usr/share/MakeMKV /licenses && install -m 0755 makemkv-bin-${MAKEMKV_VERSION}/bin/amd64/makemkvcon /install/usr/bin/makemkvcon && cp makemkv-bin-${MAKEMKV_VERSION}/src/share/* /install/usr/share/MakeMKV/ && cp makemkv-bin-${MAKEMKV_VERSION}/src/eula_en_linux.txt /licenses/makemkv.txt && cp makemkv-oss-${MAKEMKV_VERSION}/License.txt /licenses/makemkv-oss.txt && cp makemkv-oss-${MAKEMKV_VERSION}/mmccextr/License.txt /licenses/mmccextr.txt && cp sevenzip/License.txt /licenses/7zip.txt
 COPY docker/rename.c docker/sandbox.c ./
 RUN cc -O2 -Wall -Wextra -Werror rename.c -o /install/usr/bin/mux-rename && cc -O2 -Wall -Wextra -Werror sandbox.c -o /install/usr/bin/mux-sandbox
 
@@ -43,6 +42,7 @@ COPY --from=build /production/ ./api/
 COPY --from=build /src/apps/web/dist/browser/ ./web/
 ENV NODE_ENV=production PORT=8098 CONFIG_DIR=/config DOWNLOADS_ROOT=/data/downloads PLEX_ROOT=/data/plex WEB_DIR=/app/web MAKEMKV_HOME=/config/makemkv TZ=Europe/Madrid LANG=C.UTF-8 LC_ALL=C.UTF-8
 USER 1000:1000
+RUN test -x /usr/bin/makemkvcon && makemkvcon -r --noscan --cache=1 info disc:9999 > /tmp/makemkv-check.txt 2>&1; result=$?; test "$result" -le 1 && grep -q 'MakeMKV v' /tmp/makemkv-check.txt && rm /tmp/makemkv-check.txt
 EXPOSE 8098
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/usr/bin/tini", "--"]
