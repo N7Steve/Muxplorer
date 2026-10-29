@@ -31,6 +31,8 @@ COPY docker/rename.c docker/sandbox.c ./
 RUN cc -O2 -Wall -Wextra -Werror rename.c -o /install/usr/bin/mux-rename && cc -O2 -Wall -Wextra -Werror sandbox.c -o /install/usr/bin/mux-sandbox
 
 FROM node:24-bookworm-slim AS production
+LABEL org.opencontainers.image.source="https://github.com/N7Steve/Muxplorer" \
+      org.opencontainers.image.title="Muxplorer"
 RUN apt-get update && apt-get install -y --no-install-recommends mkvtoolnix ca-certificates libavcodec59 libexpat1 libssl3 zlib1g tini && rm -rf /var/lib/apt/lists/*
 COPY --from=tools /install/ /
 COPY --from=tools /build/sevenzip/7zz /usr/local/bin/7zz

@@ -45,7 +45,8 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
     ];
     const calls: string[][] = [];
     class FakeMakeProcess extends Processes {
-      override async run(_binary: string, args: string[], options?: ProcessOptions) {
+      override async run(binary: string, args: string[], options?: ProcessOptions) {
+        if (binary !== config.MAKEMKV_BIN) return super.run(binary, args, options);
         calls.push(args);
         if (args.includes('info'))
           return {

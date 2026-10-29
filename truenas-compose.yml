@@ -1,7 +1,7 @@
 services:
   muxplorer:
-    image: muxplorer:0.1.0
-    pull_policy: never
+    image: ghcr.io/n7steve/muxplorer:latest
+    pull_policy: always
     user: '1000:1000'
     ports:
       - '8098:8098'

@@ -41,23 +41,22 @@ El archivo `truenas-compose.yml` está preparado para instalar una Custom App me
 
 No se montan otras carpetas del host ni el socket Docker. `/config` utiliza un volumen independiente.
 
-Primero construye la imagen en este equipo:
+La instalación normal descarga automáticamente la imagen publicada en GitHub Container Registry:
 
-```sh
-docker build --platform linux/amd64 -t muxplorer:0.1.0 .
-docker save -o muxplorer-0.1.0.tar muxplorer:0.1.0
+```yaml
+image: ghcr.io/n7steve/muxplorer:latest
+pull_policy: always
 ```
 
-Transfiere el tar al NAS mediante el método que prefieras. En su consola, carga la imagen:
+Ve a **Apps → Discover Apps → Install via YAML**, pega `truenas-compose.yml`, revisa `user: "1000:1000"` y guarda. TrueNAS descargará la imagen sin compilar el proyecto ni copiar archivos desde otro equipo. Abre `http://IP_DEL_NAS:8098` y crea el único administrador eligiendo su nombre de usuario y contraseña directamente en la página. El healthcheck está incluido en la imagen.
 
-```sh
-docker load -i /ruta/al/muxplorer-0.1.0.tar
-docker image inspect muxplorer:0.1.0
-```
+La imagen debe tener visibilidad **Public** en GitHub Packages para que el NAS pueda descargarla sin credenciales. Publicar la imagen no expone tu instancia ni tus datos multimedia: los datasets se montan al instalar la app. Si un paquete nuevo aún figura como privado, su propietario puede cambiarlo en [Package settings](https://github.com/users/N7Steve/packages/container/muxplorer/settings). No introduzcas credenciales en este YAML.
 
-Después ve a **Apps → Discover Apps → Install via YAML**, pega `truenas-compose.yml`, revisa `user: "1000:1000"`, y despliega. Abre `http://IP_DEL_NAS:8098`. En la primera visita, crea el único administrador eligiendo su nombre de usuario y contraseña directamente en la página. El healthcheck está incluido en la imagen.
+Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el código, construye una imagen amd64, ejecuta las pruebas de aceptación en Docker y navegador, y solo entonces publica **esa misma imagen probada** como `ghcr.io/n7steve/muxplorer:latest` y `ghcr.io/n7steve/muxplorer:sha-<commit completo>`. El workflow utiliza el token temporal de GitHub Actions con permiso de escritura de paquetes; no requiere guardar claves personales. También se puede iniciar manualmente desde Actions.
 
-El YAML usa `pull_policy: never`: exige que la imagen esté cargada. Si decides usar un registro privado, etiqueta y publica la imagen bajo tu cuenta, cambia `image:` por esa referencia y `pull_policy:` por `if_not_present` o `always`. La publicación de la imagen en un registro es un paso opcional y explícito.
+Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
+
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.0 .`, exporta con `docker save -o muxplorer-0.1.0.tar muxplorer:0.1.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.0` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
