@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkvArguments, parseMkv } from '../src/mkv';
+import { metadataArguments, mkvArguments, parseMkv } from '../src/mkv';
 import { parseDisc, robotFields, makeSource } from '../src/makemkv';
-import type { RemuxRequest, Track } from '@muxplorer/shared';
+import type { MetadataRequest, RemuxRequest, Track } from '@muxplorer/shared';
+import { metadata, parse } from '../src/contracts';
 const video: Track = {
   id: 0,
   type: 'video',
@@ -54,6 +55,53 @@ const request: RemuxRequest = {
   destination: { root: 'plex', path: '' },
   name: 'out.mkv',
 };
+
+test('metadata editor selects tracks by type ordinal, not sparse identification IDs, and changes only requested fields', () => {
+  const tracks = [video, { ...audio, id: 7 }, { ...audio, id: 12 }];
+  const edit: MetadataRequest = {
+    source: request.sources[0],
+    revision: 'revision',
+    title: 'Movie',
+    tracks: [{ id: 12, name: '', language: 'es-MX', default: true, forced: true }],
+  };
+  const args = metadataArguments(edit, { title: 'Movie', tracks });
+  assert.deepEqual(args, [
+    '--edit',
+    'track:a2',
+    '--set',
+    'name=',
+    '--set',
+    'language=es-MX',
+    '--set',
+    'flag-default=1',
+    '--set',
+    'flag-forced=1',
+  ]);
+  assert.deepEqual(
+    metadataArguments({ ...edit, tracks: [], title: '' }, { title: 'Movie', tracks }),
+    ['--edit', 'info', '--set', 'title='],
+  );
+  assert.deepEqual(
+    metadataArguments({ ...edit, tracks: [{ ...audio, id: 7 }] }, { title: 'Movie', tracks }),
+    [],
+  );
+  assert.throws(() =>
+    metadataArguments(
+      { ...edit, tracks: [edit.tracks[0], edit.tracks[0]] },
+      { title: 'Movie', tracks },
+    ),
+  );
+  assert.throws(() =>
+    metadataArguments(
+      { ...edit, tracks: [{ ...edit.tracks[0], id: 999 }] },
+      { title: 'Movie', tracks },
+    ),
+  );
+  assert.throws(() =>
+    parse(metadata, { ...edit, tracks: [{ ...edit.tracks[0], enabled: false }] }),
+  );
+  assert.throws(() => parse(metadata, { ...edit, revision: undefined }));
+});
 test('mkvmerge JSON preserves metadata and refuses unsupported containers', () => {
   const result = parseMkv(
     JSON.stringify({

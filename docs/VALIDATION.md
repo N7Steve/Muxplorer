@@ -4,18 +4,19 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 | Comprobación                                            | Resultado                                                                                              |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                             | 45 pruebas correctas                                                                                   |
+| `pnpm test`                                             | 46 pruebas correctas                                                                                   |
 | `pnpm lint`                                             | Sin errores ni advertencias                                                                            |
 | `pnpm typecheck`                                        | API y plantillas Angular correctas                                                                     |
 | `pnpm format:check`                                     | Correcto                                                                                               |
-| `pnpm build`                                            | NestJS y Angular compilados; frontend inicial aproximadamente 385 KB, 100 KB de transferencia estimada |
+| `pnpm build`                                            | NestJS y Angular compilados; frontend inicial aproximadamente 398 KB, 103 KB de transferencia estimada |
 | `docker build -t muxplorer:0.1.5 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
-| `pnpm test:acceptance`                                  | Smoke Docker y diez pruebas de navegador correctas                                                     |
+| `pnpm test:acceptance`                                  | Smoke Docker y once pruebas de navegador correctas                                                     |
 | Ambos YAML mediante `docker compose ... config --quiet` | Correctos                                                                                              |
 | Healthcheck del contenedor de pruebas                   | Estado healthy tras ejecutar operaciones y reiniciar el contenedor                                     |
 
 ## Cambios 0.1.5
 
+- Editor de tags: edición real con `mkvpropedit`, mismo inode y hashes de audio/subtítulos extraídos idénticos antes y después. Rechazo de IDs desconocidos y revisión obsoleta. Navegador: editar título, nombre e idioma y guardar sobre el MKV original; filas de hasta 68 px en el fixture. Captura `test-results/visual/metadata-editor.png`.
 - Modal de revisión: grupos plegables, limpieza de todos los nombres, banderas con región explícita y logos Kodi verificados en navegador. La creación real de archivos comprueba la extensión automática en remux y revisión. Pruebas de perfiles DTS-HD/Atmos/DTS:X y alias ISO de idiomas; recursos locales presentes.
 - Empezar no limita las tareas simultáneas. Se comprueban tres trabajos activos y el botón disponible con dos en ejecución.
 - JOB_CONCURRENCY admite cualquier entero positivo para la cola automática, conservando el valor predeterminado 1.

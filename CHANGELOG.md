@@ -2,6 +2,8 @@
 
 ## 0.1.5
 
+- Filas de pistas más compactas (64 px) y logos de hasta 80 × 40 px.
+- Editor simplificado de tags desde el menú contextual del MKV: título, nombres e idiomas de pistas y flags default/forced mediante `mkvpropedit`, sin remuxear. Detección de cambios desde la apertura y verificación posterior de metadatos.
 - Revisión de pistas por grupos plegables de vídeo, audio y subtítulos, con tipografía mayor y sin repetir el archivo de origen en cada fila.
 - Borrado de todos los nombres de pista desde el pie de la modal, banderas de idioma y logos de códec del skin Kodi Aeon Nox SiLVO. Códec y canales en la primera columna, logo en una columna independiente de hasta 80 px antes del nombre de pista, sin número de pista visible.
 - Extensión `.mkv` automática en los campos de salida de revisión y remux; eliminados los avisos redundantes de la modal.

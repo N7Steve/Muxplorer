@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { rm, lstat } from 'node:fs/promises';
 import { z } from 'zod';
-import type { Media, RemuxRequest, Track } from '@muxplorer/shared';
+import type { Media, MetadataRequest, RemuxRequest, Track } from '@muxplorer/shared';
 import { Paths, safeName } from './paths';
 import { Files } from './files';
 import { Processes } from './process';
@@ -113,6 +114,50 @@ export function mkvArguments(
   });
   return args;
 }
+export function metadataArguments(
+  request: MetadataRequest,
+  media: Omit<Media, 'location'>,
+): string[] {
+  if (
+    new Set(request.tracks.map((t) => t.id)).size !== request.tracks.length ||
+    request.tracks.some((t) => !media.tracks.some((original) => original.id === t.id))
+  )
+    problem('La selección contiene pistas desconocidas o duplicadas.');
+  const args: string[] = [];
+  if (request.title !== media.title) args.push('--edit', 'info', '--set', `title=${request.title}`);
+  const positions = { video: 0, audio: 0, subtitles: 0 };
+  for (const original of media.tracks) {
+    const ordinal = ++positions[original.type];
+    const track = request.tracks.find((t) => t.id === original.id);
+    if (!track) continue;
+    const changes: string[] = [];
+    for (const [field, property] of [
+      ['name', 'name'],
+      ['language', 'language'],
+      ['default', 'flag-default'],
+      ['forced', 'flag-forced'],
+    ] as const) {
+      if (track[field] !== original[field])
+        changes.push(
+          '--set',
+          `${property}=${typeof track[field] === 'boolean' ? Number(track[field]) : track[field]}`,
+        );
+    }
+    if (changes.length)
+      args.push(
+        '--edit',
+        `track:${original.type === 'subtitles' ? 's' : original.type[0]}${ordinal}`,
+        ...changes,
+      );
+  }
+  return args;
+}
+async function fileRevision(absolute: string) {
+  const stat = await lstat(absolute, { bigint: true });
+  return createHash('sha256')
+    .update([stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':'))
+    .digest('hex');
+}
 @Injectable()
 export class Mkv {
   constructor(
@@ -127,7 +172,54 @@ export class Mkv {
     return parseMkv(result.stdout);
   }
   async inspect(location: Media['location']): Promise<Media> {
-    return { location, ...(await this.inspectAbsolute(await this.paths.file(location))) };
+    return this.files.exclusive(async () => {
+      const absolute = await this.paths.file(location);
+      const revision = await fileRevision(absolute);
+      const media = await this.inspectAbsolute(absolute);
+      if (revision !== (await fileRevision(absolute)))
+        problem('El archivo ha cambiado. Vuelve a abrirlo.');
+      return { location, revision, ...media };
+    });
+  }
+  async editMetadata(request: MetadataRequest) {
+    return this.files.exclusive(async () => {
+      if (!/\.mkv$/i.test(request.source.path)) problem('Selecciona un archivo MKV.');
+      const absolute = await this.paths.file(request.source);
+      await this.paths.tree(absolute);
+      if (request.revision !== (await fileRevision(absolute)))
+        problem('El archivo ha cambiado. Vuelve a abrir el editor.');
+      const media = await this.inspectAbsolute(absolute);
+      const args = metadataArguments(request, media);
+      if (request.revision !== (await fileRevision(absolute)))
+        problem('El archivo ha cambiado. Vuelve a abrir el editor.');
+      if (!args.length) return { ok: true };
+      try {
+        const result = await this.processes.run(config.MKVPROPEDIT_BIN, [absolute, ...args], {
+          allowedCodes: [0, 1],
+          timeout: 120_000,
+        });
+        const updated = await this.inspectAbsolute(absolute);
+        if (
+          updated.tracks.length !== media.tracks.length ||
+          updated.title !== request.title ||
+          request.tracks.some((t) => {
+            const actual = updated.tracks.find((a) => a.id === t.id);
+            return (
+              !actual ||
+              actual.name !== t.name ||
+              actual.default !== t.default ||
+              actual.forced !== t.forced
+            );
+          })
+        )
+          problem('No se han podido verificar todos los metadatos guardados.');
+        return { ok: true, warning: result.code === 1 ? result.stdout : undefined };
+      } catch (error) {
+        problem(
+          `No se completó la edición. Vuelve a abrir el archivo para comprobar sus metadatos. ${error instanceof Error ? error.message : ''}`,
+        );
+      }
+    });
   }
   async runAbsolute(
     request: RemuxRequest,

@@ -23,6 +23,17 @@ export const remux = z
     name: z.string().min(1).max(240),
   })
   .strict();
+export const metadata = z
+  .object({
+    source: location,
+    revision: z.string().min(1).max(128),
+    title: z.string().max(512),
+    tracks: z
+      .array(choice.omit({ source: true, enabled: true }))
+      .min(1)
+      .max(256),
+  })
+  .strict();
 export const extract = z
   .object({
     source: location,

@@ -146,6 +146,22 @@ export class ApiController implements OnModuleInit {
     const data = contract.parse(contract.remux, body);
     return this.jobs.enqueue('remux', data, data.sources, data.destination);
   }
+  @Post('media/metadata') metadata(@Body() body: unknown) {
+    const data = contract.parse(contract.metadata, body);
+    if (
+      this.jobs
+        .list()
+        .some(
+          (job) =>
+            ['pending', 'running'].includes(job.status) &&
+            job.sources.some(
+              (source) => source.root === data.source.root && source.path === data.source.path,
+            ),
+        )
+    )
+      problem('Espera a que terminen las operaciones que usan este archivo.');
+    return this.mkv.editMetadata(data);
+  }
   @Post('makemkv/inspect') disc(@Body() body: unknown) {
     return this.make.inspect(contract.parse(contract.location, body));
   }
@@ -264,6 +280,7 @@ export class ApiController implements OnModuleInit {
       [
         ['sevenZip', config.SEVENZIP_BIN, ['i']],
         ['mkvmerge', config.MKVMERGE_BIN, ['--version']],
+        ['mkvpropedit', config.MKVPROPEDIT_BIN, ['--version']],
         ['makemkv', config.MAKEMKV_BIN, ['-r', '--noscan', '--cache=1', 'info', 'disc:9999']],
       ].map(async ([key, binary, args]) => {
         try {

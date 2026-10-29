@@ -1472,7 +1472,9 @@ input[type='checkbox'] {
 }
 .track-row {
   border-bottom: 1px solid #2a3143;
-  min-height: 85px;
+  min-height: 64px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 .track-row:last-child {
   border-bottom: 0;
@@ -2208,7 +2210,7 @@ input[type='checkbox'] {
 .codec-flag {
   width: 80px;
   max-width: 80px;
-  height: 56px;
+  height: 40px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -2217,6 +2219,11 @@ input[type='checkbox'] {
   align-items: center;
   justify-content: center;
   min-width: 0;
+}
+.metadata-only .track-header,
+.metadata-only .track-row {
+  grid-template-columns: 180px 80px minmax(120px, 1fr) 118px 52px 52px;
+  min-width: 760px;
 }
 .output-name {
   display: flex;

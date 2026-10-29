@@ -109,6 +109,42 @@ test('archive extraction uses visual destination picker and updates the other pa
     page.locator('mx-explorer[panelId="right"]').getByRole('row').filter({ hasText: folderName }),
   ).toBeVisible();
 });
+
+test('MKV metadata editor saves track names, languages and flags in place without a remux job', async ({
+  page,
+}) => {
+  const left = page.locator('mx-explorer[panelId="left"]');
+  await left.getByRole('row').filter({ hasText: 'Muestra.mkv' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Editar tags sin remuxear' }).click();
+  const modal = page.getByRole('dialog');
+  await expect(modal.getByRole('heading', { name: 'Editar tags del MKV' })).toBeVisible();
+  await expect(modal.locator('.track-row')).toHaveCount(2);
+  await expect(modal.locator('.drag-handle, .track-select')).toHaveCount(0);
+  await expect(modal.getByLabel('Archivo de salida')).toHaveCount(0);
+  await modal.getByLabel('Título del MKV').fill('Título editado');
+  await modal
+    .getByRole('textbox', { name: 'Nombre de pista', exact: true })
+    .first()
+    .fill('Audio renombrado');
+  await modal.getByRole('textbox', { name: 'Idioma BCP 47', exact: true }).first().fill('es-MX');
+  await modal.getByRole('checkbox', { name: 'Pista predeterminada', exact: true }).first().check();
+  const rows = modal.locator('.track-row');
+  expect((await rows.first().boundingBox())!.height).toBeLessThanOrEqual(68);
+  await page.screenshot({ path: 'test-results/visual/metadata-editor.png', fullPage: true });
+  const saved = page.waitForResponse((r) => r.url().endsWith('/api/media/metadata'));
+  await modal.getByRole('button', { name: 'Guardar tags', exact: true }).click();
+  expect((await saved).ok()).toBeTruthy();
+  await expect(modal).toHaveCount(0);
+  const response = await page.request.post('/api/media/inspect', {
+    headers: { 'X-Muxplorer': '1' },
+    data: { root: 'downloads', path: 'Muestra.mkv' },
+  });
+  const media = await response.json();
+  expect(media.title).toBe('Título editado');
+  expect(media.tracks[0].name).toBe('Audio renombrado');
+  expect(media.tracks[0].language).toBe('es-MX');
+  expect(media.tracks[0].default).toBe(true);
+});
 test('multiple selection, drag and drop confirmation and mobile layout', async ({ page }) => {
   const left = page.locator('mx-explorer[panelId="left"]');
   await left.getByRole('row').filter({ hasText: 'Colección de prueba' }).click();

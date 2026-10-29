@@ -23,6 +23,7 @@ type Dialog =
   | 'transfer'
   | 'extract'
   | 'remux'
+  | 'metadata'
   | 'disc'
   | 'properties'
   | 'settings'
@@ -93,7 +94,7 @@ export class AppComponent {
   transfer: 'copy' | 'move' = 'copy';
   readonly bytes = bytes;
   readonly display = displayLocation;
-  readonly toolKeys = ['sevenZip', 'mkvmerge', 'makemkv'] as const;
+  readonly toolKeys = ['sevenZip', 'mkvmerge', 'mkvpropedit', 'makemkv'] as const;
   readonly activeCount = computed(
     () => this.api.jobs().filter((j) => j.status === 'pending' || j.status === 'running').length,
   );
@@ -268,11 +269,11 @@ export class AppComponent {
       if (action.action === 'extract-here' || action.action === 'extract-new')
         this.destination.set(action.location);
       this.dialog.set('extract');
-    } else if (action.action === 'remux' && action.entries.length === 1) {
+    } else if (['remux', 'metadata'].includes(action.action) && action.entries.length === 1) {
       this.sources.set([]);
       this.tracks.set([]);
       this.name = action.entries[0].name.replace(/\.[^.]+$/, '') + '.remux';
-      this.dialog.set('remux');
+      this.dialog.set(action.action === 'metadata' ? 'metadata' : 'remux');
       await this.addSource(action.entries[0].location);
     } else if (['disc', 'disc-mkvtoolnix'].includes(action.action) && action.entries.length === 1) {
       this.discEngine.set(action.action === 'disc' ? 'makemkv' : 'disc');
@@ -370,6 +371,26 @@ export class AppComponent {
       const sources = action?.entries.map((e) => e.location) ?? [];
       let message = 'Operación añadida';
       switch (this.dialog()) {
+        case 'metadata': {
+          const source = this.sources()[0];
+          const result = await this.api.request<{ warning?: string }>('media/metadata', {
+            source: source.location,
+            revision: source.revision,
+            title: this.title,
+            tracks: this.tracks().map((t) => ({
+              id: t.id,
+              name: t.name,
+              language: t.language,
+              default: t.default,
+              forced: t.forced,
+            })),
+          });
+          this.api.revision.update((r) => r + 1);
+          message = result.warning
+            ? `Metadatos guardados con advertencias: ${result.warning}`
+            : 'Metadatos guardados sin remuxear';
+          break;
+        }
         case 'mkdir':
           await this.api.request('files/mkdir', { parent: action!.location, name: this.name });
           this.api.revision.update((r) => r + 1);

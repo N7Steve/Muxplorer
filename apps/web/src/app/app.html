@@ -355,6 +355,11 @@
   >
     <mx-icon name="Film" />Abrir con MKVToolNix
   </button>
+  @if(ctx.entries[0].extension === 'mkv'){
+  <button role="menuitem" (click)="contextAction('metadata')">
+    <mx-icon name="Pencil" />Editar tags sin remuxear
+  </button>
+  }
   <hr />
   } @if(ctx.entries.length === 1 && isDisc(ctx.entries[0])) {<button
     role="menuitem"
@@ -387,7 +392,7 @@
 <div class="modal-backdrop" (mousedown)="backdrop($event)">
   <section
     class="modal"
-    [class.wide]="modal === 'remux' || modal === 'disc' || modal === 'review'"
+    [class.wide]="modal === 'remux' || modal === 'metadata' || modal === 'disc' || modal === 'review'"
     role="dialog"
     aria-modal="true"
     aria-labelledby="modal-title"
@@ -397,16 +402,17 @@
     <header class="modal-header">
       <div>
         <div class="eyebrow">
-          {{ modal === 'remux' ? 'MKVTOOLNIX' : modal === 'disc' ? (discEngine() === 'disc' ?
-          'MKVTOOLNIX' : 'MAKEMKV') : modal === 'review' ? 'REVISIÓN DE PISTAS' : 'MUXPLORER' }}
+          {{ modal === 'remux' || modal === 'metadata' ? 'MKVTOOLNIX' : modal === 'disc' ?
+          (discEngine() === 'disc' ? 'MKVTOOLNIX' : 'MAKEMKV') : modal === 'review' ? 'REVISIÓN DE
+          PISTAS' : 'MUXPLORER' }}
         </div>
         <h2 id="modal-title">
           {{ modal === 'mkdir' ? 'Nueva carpeta' : modal === 'rename' ? 'Cambiar nombre' : modal ===
           'delete' ? 'Eliminar elementos' : modal === 'transfer' ? 'Transferir archivos' : modal ===
-          'extract' ? 'Extraer archivo' : modal === 'remux' ? 'Prepara tu MKV' : modal === 'disc' ?
-          'Del disco a tu biblioteca' : modal === 'review' ? 'Elige las pistas definitivas' : modal
-          === 'settings' ? 'Tu servidor' : modal === 'shortcuts' ? 'Muévete con el teclado' :
-          'Propiedades' }}
+          'extract' ? 'Extraer archivo' : modal === 'metadata' ? 'Editar tags del MKV' : modal ===
+          'remux' ? 'Prepara tu MKV' : modal === 'disc' ? 'Del disco a tu biblioteca' : modal ===
+          'review' ? 'Elige las pistas definitivas' : modal === 'settings' ? 'Tu servidor' : modal
+          === 'shortcuts' ? 'Muévete con el teclado' : 'Propiedades' }}
         </h2>
       </div>
       <button class="icon-button" (click)="close()" [disabled]="busy()" aria-label="Cerrar diálogo">
@@ -485,6 +491,13 @@
           placeholder="Solo si el archivo está protegido"
       /></label>
       <p class="field-help">No se guarda la contraseña en el historial.</p>
+      } @if(modal === 'metadata'){
+      <p class="muted">
+        Los cambios se guardan directamente en el MKV original, sin remuxear el vídeo ni el audio.
+      </p>
+      <p class="muted">{{ currentAction()!.entries[0].name }}</p>
+      <label>Título del MKV<input [(ngModel)]="title" placeholder="Título de la película" /></label>
+      <mx-tracks [tracks]="tracks()" [metadataOnly]="true" />
       } @if(modal === 'remux'){
       <p class="muted">
         Conserva solo lo que necesitas. Arrastra las pistas para cambiar el orden. El original se
@@ -595,8 +608,8 @@
           <span class="status-dot" [class.warning]="!system.tools[tool].available"></span>
           <div>
             <b
-              >{{ tool === 'sevenZip' ? '7-Zip' : tool === 'mkvmerge' ? 'MKVToolNix' : 'MakeMKV'
-              }}</b
+              >{{ tool === 'sevenZip' ? '7-Zip' : tool === 'mkvmerge' ? 'MKVToolNix' : tool ===
+              'mkvpropedit' ? 'MKVToolNix · editor de tags' : 'MakeMKV' }}</b
             ><small>{{ system.tools[tool].version || system.tools[tool].error }}</small>
           </div>
           <span>{{ system.tools[tool].available ? 'Disponible' : 'No disponible' }}</span>
@@ -671,7 +684,7 @@
       }
     </div>
     <footer class="modal-footer">
-      @if(modal === 'review' || modal === 'remux'){
+      @if(modal === 'review' || modal === 'remux' || modal === 'metadata'){
       <button
         class="button secondary clear-track-names"
         (click)="clearTrackNames()"
@@ -693,13 +706,14 @@
         [class.danger]="modal === 'delete'"
         [class.primary]="modal !== 'delete'"
         (click)="submit()"
-        [disabled]="busy() || (modal === 'disc' && !selectedTitles().size) || (modal === 'remux' && !tracks().length)"
+        [disabled]="busy() || (modal === 'disc' && !selectedTitles().size) || ((modal === 'remux' || modal === 'metadata') && !tracks().length)"
       >
         <mx-icon [name]="modal === 'delete' ? 'Trash2' : 'ArrowRight'" [size]="16" />{{ modal ===
         'delete' ? 'Eliminar definitivamente' : modal === 'mkdir' ? 'Crear carpeta' : modal ===
-        'rename' ? 'Guardar nombre' : modal === 'remux' ? 'Crear MKV' : modal === 'disc' ? 'Extraer
-        y revisar pistas' : modal === 'review' ? 'Confirmar y crear MKV' : modal === 'extract' ?
-        'Extraer' : transfer === 'move' ? 'Mover aquí' : 'Copiar aquí' }}</button
+        'rename' ? 'Guardar nombre' : modal === 'metadata' ? 'Guardar tags' : modal === 'remux' ?
+        'Crear MKV' : modal === 'disc' ? 'Extraer y revisar pistas' : modal === 'review' ?
+        'Confirmar y crear MKV' : modal === 'extract' ? 'Extraer' : transfer === 'move' ? 'Mover
+        aquí' : 'Copiar aquí' }}</button
       >}
     </footer>
   </section>

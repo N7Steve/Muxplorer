@@ -311,6 +311,49 @@ try {
   assert.equal(result.tracks[0].name, 'Castellano');
   assert.equal(result.tracks[0].forced, true);
   assert.equal(result.tracks[0].language, 'es');
+  // Edit the same inode and prove the extracted audio/subtitle payloads are unchanged.
+  const identity = docker('exec', name, 'stat', '-c', '%d:%i', '/data/plex/result.mkv');
+  const payloadHashes = (prefix) => {
+    docker(
+      'exec',
+      name,
+      'mkvextract',
+      '/data/plex/result.mkv',
+      'tracks',
+      `0:/tmp/${prefix}-0`,
+      `1:/tmp/${prefix}-1`,
+    );
+    return [0, 1].map(
+      (i) => docker('exec', name, 'sha256sum', `/tmp/${prefix}-${i}`).split(' ')[0],
+    );
+  };
+  const beforeHashes = payloadHashes('metadata-before');
+  const edit = {
+    source: plex('result.mkv'),
+    revision: result.revision,
+    title: 'Título editado sin remux',
+    tracks: result.tracks.map((t) => ({
+      id: t.id,
+      name: t.type === 'audio' ? 'Audio editado' : '',
+      language: t.type === 'audio' ? 'es-MX' : 'en',
+      default: t.type === 'audio',
+      forced: false,
+    })),
+  };
+  const jobCount = (await request('jobs')).length;
+  await request('media/metadata', { ...edit, tracks: [{ ...edit.tracks[0], id: 999 }] }, 400);
+  await request('media/metadata', edit, 201);
+  assert.equal(docker('exec', name, 'stat', '-c', '%d:%i', '/data/plex/result.mkv'), identity);
+  assert.deepEqual(payloadHashes('metadata-after'), beforeHashes);
+  assert.equal((await request('jobs')).length, jobCount);
+  const edited = await request('media/inspect', plex('result.mkv'), 201);
+  assert.equal(edited.title, edit.title);
+  for (const expected of edit.tracks) {
+    const actual = edited.tracks.find((t) => t.id === expected.id);
+    for (const field of ['name', 'language', 'default', 'forced'])
+      assert.equal(actual[field], expected[field]);
+  }
+  await request('media/metadata', edit, 400); // stale editor cannot overwrite newer edits
   // Synthetic 125-second Blu-ray (AVC + AC3), generated from black video and silent audio.
   // Exercise the real MPLS reader, ISO extraction, checkpoint and reviewed publication.
   docker('cp', path.resolve('tests/fixtures/disc.zip'), `${name}:/tmp/disc.zip`);
@@ -517,6 +560,7 @@ try {
   const tools = await request('system');
   assert.ok(tools.tools.sevenZip.available);
   assert.ok(tools.tools.mkvmerge.available);
+  assert.ok(tools.tools.mkvpropedit.available);
   assert.ok(tools.tools.makemkv.available, JSON.stringify(tools.tools.makemkv));
   assert.match(tools.tools.makemkv.version, /MakeMKV v/);
   docker('exec', name, 'test', '-x', '/usr/bin/makemkvcon');
@@ -558,6 +602,7 @@ try {
           'multi-source remux',
           'native BDMV and ISO reviewed remux with MKVToolNix',
           'track flags and ordering',
+          'in-place metadata edit preserves inode and track payloads',
           'SSE',
           'persistent history',
           'cancelled streaming copy preserves source',

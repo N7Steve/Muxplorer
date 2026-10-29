@@ -11,6 +11,7 @@ const env = z
     COOKIE_SECURE: z.enum(['true', 'false']).default('false'),
     SEVENZIP_BIN: z.string().default('7zz'),
     MKVMERGE_BIN: z.string().default('mkvmerge'),
+    MKVPROPEDIT_BIN: z.string().default('mkvpropedit'),
     MAKEMKV_BIN: z.string().default('makemkvcon'),
     SANDBOX_BIN: z.string().default('mux-sandbox'),
     RENAME_BIN: z.string().default('mux-rename'),

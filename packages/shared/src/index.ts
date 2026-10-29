@@ -33,8 +33,15 @@ export interface Track {
 }
 export interface Media {
   location: Location;
+  revision?: string;
   title: string;
   tracks: Track[];
+}
+export interface MetadataRequest {
+  source: Location;
+  revision: string;
+  title: string;
+  tracks: Pick<Track, 'id' | 'name' | 'language' | 'default' | 'forced'>[];
 }
 export interface TrackChoice {
   source: number;
@@ -101,6 +108,6 @@ export interface ToolStatus {
   error?: string;
 }
 export interface SystemStatus {
-  tools: Record<'sevenZip' | 'mkvmerge' | 'makemkv', ToolStatus>;
+  tools: Record<'sevenZip' | 'mkvmerge' | 'mkvpropedit' | 'makemkv', ToolStatus>;
   concurrency: number;
 }
