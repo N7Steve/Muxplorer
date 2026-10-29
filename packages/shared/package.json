@@ -1,0 +1,6 @@
+{
+  "name": "@muxplorer/shared",
+  "version": "0.1.0",
+  "private": true,
+  "types": "src/index.ts"
+}

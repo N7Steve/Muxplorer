@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.angular/
+.env
+.env.*
+!.env.example
+.local/
+coverage/
+test-results/
+playwright-report/
+*.log
+*.sqlite*
+docker/makemkv/*.tar.gz
+docker/makemkv/accept-eula

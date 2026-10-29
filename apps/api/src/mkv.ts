@@ -1,0 +1,187 @@
+import { Injectable } from '@nestjs/common';
+import path from 'node:path';
+import { rm, lstat } from 'node:fs/promises';
+import { z } from 'zod';
+import type { Media, RemuxRequest, Track } from '@muxplorer/shared';
+import { Paths, safeName } from './paths';
+import { Files } from './files';
+import { Processes } from './process';
+import { config } from './config';
+import { JobContext } from './jobs';
+import { problem } from './errors';
+const identification = z.object({
+  container: z.object({
+    recognized: z.boolean().optional(),
+    supported: z.boolean().optional(),
+    properties: z.object({ title: z.string().optional() }).passthrough().optional(),
+  }),
+  tracks: z.array(
+    z.object({
+      id: z.number().int().nonnegative(),
+      type: z.string(),
+      codec: z.string(),
+      properties: z
+        .object({
+          language: z.string().optional(),
+          language_ietf: z.string().optional(),
+          track_name: z.string().optional(),
+          audio_channels: z.number().optional(),
+          pixel_dimensions: z.string().optional(),
+          default_track: z.boolean().optional(),
+          forced_track: z.boolean().optional(),
+        })
+        .passthrough(),
+    }),
+  ),
+  errors: z.array(z.string()).optional(),
+});
+export function parseMkv(json: string): Omit<Media, 'location'> {
+  const data = identification.parse(JSON.parse(json));
+  if (
+    data.container.recognized === false ||
+    data.container.supported === false ||
+    data.errors?.length
+  )
+    problem(data.errors?.join('\n') || 'Contenedor no compatible con MKVToolNix.');
+  const tracks: Track[] = data.tracks
+    .filter((t) => ['video', 'audio', 'subtitles'].includes(t.type))
+    .map((t) => ({
+      id: t.id,
+      type: t.type as Track['type'],
+      codec: t.codec,
+      language: t.properties.language_ietf ?? t.properties.language ?? 'und',
+      name: t.properties.track_name ?? '',
+      channels: t.properties.audio_channels,
+      resolution: t.properties.pixel_dimensions,
+      default: t.properties.default_track ?? false,
+      forced: t.properties.forced_track ?? false,
+    }));
+  if (!tracks.length) problem('No se encontraron pistas compatibles.');
+  return { title: data.container.properties?.title ?? '', tracks };
+}
+export function mkvArguments(
+  request: RemuxRequest,
+  sources: { absolute: string; tracks: Track[] }[],
+  output: string,
+): string[] {
+  const enabled = request.tracks.filter((t) => t.enabled);
+  if (!enabled.length) problem('Selecciona al menos una pista.');
+  if (new Set(request.tracks.map((t) => `${t.source}:${t.id}`)).size !== request.tracks.length)
+    problem('Hay pistas duplicadas.');
+  for (const choice of request.tracks)
+    if (!sources[choice.source]?.tracks.some((t) => t.id === choice.id))
+      problem('La selección contiene una pista desconocida.');
+  const args = [
+    '--gui-mode',
+    '--output',
+    output,
+    '--title',
+    request.title,
+    '--track-order',
+    enabled.map((t) => `${t.source}:${t.id}`).join(','),
+  ];
+  sources.forEach((source, index) => {
+    const selected = enabled.filter((t) => t.source === index);
+    for (const type of ['video', 'audio', 'subtitles'] as const) {
+      const ids = selected
+        .filter((t) => source.tracks.find((track) => track.id === t.id)?.type === type)
+        .map((t) => t.id);
+      args.push(
+        ids.length
+          ? type === 'subtitles'
+            ? '--subtitle-tracks'
+            : `--${type}-tracks`
+          : `--no-${type}`,
+        ...(ids.length ? [ids.join(',')] : []),
+      );
+    }
+    args.push('--no-buttons');
+    if (index > 0) args.push('--no-chapters', '--no-global-tags');
+    for (const track of selected)
+      args.push(
+        '--track-name',
+        `${track.id}:${track.name}`,
+        '--language',
+        `${track.id}:${track.language || 'und'}`,
+        '--default-track-flag',
+        `${track.id}:${track.default ? 1 : 0}`,
+        '--forced-display-flag',
+        `${track.id}:${track.forced ? 1 : 0}`,
+      );
+    // Each source is a separate input; no '+' (append) or parenthesized concatenation.
+    args.push(source.absolute);
+  });
+  return args;
+}
+@Injectable()
+export class Mkv {
+  constructor(
+    private readonly paths: Paths,
+    private readonly files: Files,
+    private readonly processes: Processes,
+  ) {}
+  async inspectAbsolute(absolute: string) {
+    const result = await this.processes.run(config.MKVMERGE_BIN, ['-J', absolute], {
+      timeout: 120_000,
+    });
+    return parseMkv(result.stdout);
+  }
+  async inspect(location: Media['location']): Promise<Media> {
+    return { location, ...(await this.inspectAbsolute(await this.paths.file(location))) };
+  }
+  async runAbsolute(
+    request: RemuxRequest,
+    sourcePaths: string[],
+    output: string,
+    context: JobContext,
+  ) {
+    const sources = await Promise.all(
+      sourcePaths.map(async (absolute) => ({
+        absolute,
+        ...(await this.inspectAbsolute(absolute)),
+      })),
+    );
+    const result = await this.processes.run(
+      config.MKVMERGE_BIN,
+      mkvArguments(request, sources, output),
+      {
+        signal: context.signal,
+        allowedCodes: [0, 1],
+        onLine: (line) => {
+          const progress = /#GUI#progress\s+(\d+)%/.exec(line);
+          if (progress) context.update('Remultiplexando sin recodificar', Number(progress[1]));
+          else if (line.startsWith('#GUI#warning')) context.message(line);
+        },
+      },
+    );
+    if (result.code === 1)
+      context.message('MKVToolNix terminó con advertencias. Consulta los mensajes del trabajo.');
+    if (!(await lstat(output)).size) problem('MKVToolNix no generó un archivo válido.');
+    const final = await this.inspectAbsolute(output);
+    if (final.tracks.length !== request.tracks.filter((t) => t.enabled).length)
+      problem('El número de pistas del resultado no coincide con la selección.');
+  }
+  async remux(request: RemuxRequest, context: JobContext) {
+    safeName(request.name);
+    if (!request.name.toLowerCase().endsWith('.mkv'))
+      problem('La salida debe tener extensión .mkv.');
+    await this.files.absent({
+      root: request.destination.root,
+      path: [request.destination.path, request.name].filter(Boolean).join('/'),
+    });
+    const sourcePaths = await Promise.all(request.sources.map((source) => this.paths.file(source)));
+    const staging = await this.files.staging(request.destination, context.id);
+    try {
+      const output = path.join(staging, 'result.mkv');
+      await this.runAbsolute(request, sourcePaths, output, context);
+      context.signal.throwIfAborted();
+      context.result(
+        await this.files.exclusive(() =>
+          this.files.publish(output, request.destination, request.name),
+        ),
+      );
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  }
+}

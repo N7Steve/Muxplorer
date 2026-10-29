@@ -1,0 +1,676 @@
+@if (starting()) {
+<div class="boot">
+  <img src="favicon.svg" width="48" height="48" alt="Muxplorer" /><mx-icon
+    name="LoaderCircle"
+    class="spinning"
+    [size]="24"
+  />
+</div>
+} @else if (!authenticated()) {
+<main class="login-screen">
+  <div class="login-glow"></div>
+  <section class="login-card">
+    <div class="brand large">
+      <img src="favicon.svg" alt="" width="42" height="42" /><span
+        >Muxplorer<span class="brand-dot">.</span></span
+      >
+    </div>
+    <div class="eyebrow">TU SERVIDOR. TUS ARCHIVOS.</div>
+    <h1>{{ configured() ? 'Tu espacio multimedia.' : 'Bienvenido a tu nuevo espacio.' }}</h1>
+    <p class="muted">
+      {{ configured() ? 'Entra para organizar, extraer y preparar tu biblioteca. Todo ocurre en tu
+      servidor.' : 'Elige el nombre de usuario y la contraseña de tu única cuenta de administrador.'
+      }}
+    </p>
+    <form (ngSubmit)="login()">
+      <label
+        >Nombre de usuario<input
+          name="username"
+          [(ngModel)]="username"
+          autocomplete="username"
+          required
+          maxlength="64"
+          placeholder="Tu usuario de administrador"
+      /></label>
+      <label
+        >Contraseña de administrador<input
+          type="password"
+          name="password"
+          [(ngModel)]="password"
+          [attr.autocomplete]="configured() ? 'current-password' : 'new-password'"
+          [minlength]="configured() ? 1 : 12"
+          required
+          placeholder="{{ configured() ? 'Tu contraseña' : 'Al menos 12 caracteres' }}"
+      /></label>
+      @if (error()) {
+      <div class="inline-error" role="alert"><mx-icon name="AlertCircle" />{{ error() }}</div>
+      }
+      <button class="button primary login-submit" type="submit" [disabled]="busy()">
+        <mx-icon [name]="busy() ? 'LoaderCircle' : 'ArrowRight'" [class.spinning]="busy()" />{{
+        configured() ? 'Entrar en Muxplorer' : 'Crear administrador' }}
+      </button>
+    </form>
+    <div class="login-foot">
+      <mx-icon name="ShieldCheck" [size]="15" />Procesamiento local · Acceso protegido
+    </div>
+  </section>
+  <span class="login-version">MUXPLORER · 0.1.0</span>
+</main>
+} @else {
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">
+      <img src="favicon.svg" width="30" height="30" alt="" /><span
+        >Muxplorer<span class="brand-dot">.</span></span
+      ><span class="version">MVP</span>
+    </div>
+    <div class="topbar-center">
+      <span class="status-dot" [class.warning]="api.connection() !== 'connected'"></span>{{
+      api.connection() === 'connected' ? 'Conectado a tu servidor' : 'Reconectando con el servidor…'
+      }}
+    </div>
+    <div class="topbar-actions">
+      <button
+        class="button ghost operations-toggle"
+        (click)="jobsOpen.set(!jobsOpen())"
+        [class.active]="jobsOpen()"
+      >
+        <mx-icon name="Activity" [size]="17" />Operaciones @if (activeCount()) {<span class="count"
+          >{{ activeCount() }}</span
+        >}
+      </button>
+      <div class="divider"></div>
+      <button
+        class="icon-button"
+        title="Configuración y herramientas"
+        (click)="dialog.set('settings')"
+      >
+        <mx-icon name="Settings2" /></button
+      ><button class="avatar" title="Cerrar sesión" aria-label="Cerrar sesión" (click)="logout()">
+        {{ adminName().slice(0, 1).toUpperCase() }}
+      </button>
+    </div>
+  </header>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="section-label">ESPACIOS</div>
+      <button class="side-link selected" (click)="jobsOpen.set(false)">
+        <mx-icon name="PanelLeft" />Explorador<span class="side-marker"></span></button
+      ><button class="side-link" (click)="jobsOpen.set(true)">
+        <mx-icon name="Layers" />Operaciones @if(activeCount()){<span class="subtle-count"
+          >{{ activeCount() }}</span
+        >}
+      </button>
+      <div class="section-label storage-label">ALMACENAMIENTO</div>
+      @for (root of api.roots(); track root.id) {<button
+        class="storage-card"
+        (click)="root.available && this.root(root.id)"
+        [class.unavailable]="!root.available"
+      >
+        <span class="storage-icon"
+          ><mx-icon [name]="root.id === 'downloads' ? 'Download' : 'HardDrive'" [size]="19" /></span
+        ><b>{{ root.name }}</b
+        ><small
+          >{{ root.available ? bytes(root.free ?? 0) + ' disponibles' : 'Raíz no disponible'
+          }}</small
+        ><mx-icon name="ChevronRight" [size]="13" /></button
+      >}
+      <div class="sidebar-bottom">
+        <div class="local-note">
+          <span class="status-dot"></span><b>Todo se queda aquí</b>
+          <p>Los archivos se procesan directamente en tu servidor.</p>
+        </div>
+        <button class="side-help" (click)="dialog.set('shortcuts')">
+          <mx-icon name="Keyboard" [size]="16" />Atajos de teclado<mx-icon
+            name="CircleHelp"
+            [size]="14"
+          /></button
+        ><span class="sidebar-version">MUXPLORER / 0.1.0</span>
+      </div>
+    </aside>
+    <main class="main-area">
+      <div class="page-heading">
+        <div>
+          <div class="eyebrow">TU BIBLIOTECA, BAJO CONTROL</div>
+          <h1>Explorador de archivos<span class="heading-dot">.</span></h1>
+          <p>Organiza tus archivos. Prepara tu próxima sesión.</p>
+        </div>
+        <div class="heading-tag">
+          <mx-icon name="ShieldCheck" [size]="16" />Procesamiento en el servidor
+        </div>
+      </div>
+      <div class="actionbar">
+        <div class="action-group">
+          <button class="button compact secondary" (click)="toolbar('mkdir')">
+            <mx-icon name="Plus" [size]="16" />Nueva carpeta</button
+          ><span class="toolbar-divider"></span
+          ><button
+            class="button compact ghost"
+            [disabled]="!currentSelection().length"
+            (click)="toolbar('copy')"
+          >
+            <mx-icon name="Copy" [size]="16" />Copiar</button
+          ><button
+            class="button compact ghost"
+            [disabled]="!currentSelection().length"
+            (click)="toolbar('move')"
+          >
+            <mx-icon name="MoveRight" [size]="16" />Mover</button
+          ><button
+            class="button compact ghost"
+            [disabled]="currentSelection().length !== 1"
+            (click)="toolbar('rename')"
+          >
+            <mx-icon name="Pencil" [size]="15" />Renombrar</button
+          ><button
+            class="button compact ghost danger-hover"
+            [disabled]="!currentSelection().length"
+            (click)="toolbar('delete')"
+          >
+            <mx-icon name="Trash2" [size]="16" />Eliminar
+          </button>
+        </div>
+        <span class="selection-hint"
+          >{{ currentSelection().length ? currentSelection().length + ' seleccionados' : 'Selecciona
+          o arrastra entre paneles' }}</span
+        >
+      </div>
+      <div class="panels">
+        <mx-explorer
+          #left
+          panelId="left"
+          initialRoot="downloads"
+          [active]="active() === 'left'"
+          (activated)="active.set('left')"
+          (action)="onAction($event)"
+        />
+        <div class="panel-divider"><span></span></div>
+        <mx-explorer
+          #right
+          panelId="right"
+          initialRoot="plex"
+          [active]="active() === 'right'"
+          (activated)="active.set('right')"
+          (action)="onAction($event)"
+        />
+      </div>
+      <footer class="workspace-footer">
+        <span
+          ><mx-icon name="HardDrive" [size]="13" />2 ubicaciones · Un solo espacio de trabajo</span
+        ><span
+          ><kbd>Ctrl</kbd> selección múltiple <i>·</i> <kbd>Shift</kbd> selección de rango
+          <i>·</i> Doble clic para abrir</span
+        >
+      </footer>
+    </main>
+  </div>
+  @if (activeCount() && !jobsOpen()) {<button class="floating-job" (click)="jobsOpen.set(true)">
+    <span class="job-orbit"><mx-icon name="Activity" [size]="18" /></span>
+    <div>
+      <b
+        >{{ activeCount() }} {{ activeCount() === 1 ? 'operación activa' : 'operaciones activas'
+        }}</b
+      ><small>{{ activeJobs()[0]?.stage }}</small>
+    </div>
+    <mx-icon name="ChevronRight" [size]="16" /></button
+  >}
+</div>
+@if (jobsOpen()) {
+<div class="drawer-backdrop" (click)="jobsOpen.set(false)"></div>
+<aside
+  class="jobs-drawer"
+  aria-label="Panel de operaciones"
+  cdkTrapFocus
+  [cdkTrapFocusAutoCapture]="true"
+>
+  <header>
+    <div>
+      <div class="eyebrow">ACTIVIDAD DEL SERVIDOR</div>
+      <h2>Operaciones<span class="heading-dot">.</span></h2>
+    </div>
+    <button class="icon-button" aria-label="Cerrar operaciones" (click)="jobsOpen.set(false)">
+      <mx-icon name="X" />
+    </button>
+  </header>
+  <p class="drawer-description">Puedes seguir navegando mientras el servidor trabaja.</p>
+  <div class="jobs-list">
+    @for (job of api.jobs(); track job.id) {
+    <article class="job-card" [class.failed]="job.status === 'failed'">
+      <div class="job-title">
+        <span class="job-icon"
+          ><mx-icon
+            [name]="job.kind === 'extract' ? 'FileArchive' : job.kind === 'remux' || job.kind === 'makemkv' ? 'Film' : job.kind === 'delete' ? 'Trash2' : 'Copy'"
+        /></span>
+        <div>
+          <b>{{ jobLabels[job.kind] }}</b><small>{{ job.createdAt | date:'dd MMM, HH:mm' }}</small>
+        </div>
+        <span class="job-status" [class]="'job-status ' + job.status"
+          >{{ job.awaitingReview ? 'Revisar pistas' : statusLabels[job.status] }}</span
+        >
+      </div>
+      <p class="job-source" [title]="job.sources[0] ? display(job.sources[0]) : ''">
+        {{ job.sources[0]?.path?.split('/')?.pop() || 'Operación' }}@if(job.sources.length >
+        1){<span> +{{ job.sources.length - 1 }}</span>}
+      </p>
+      <div class="job-stage">
+        <span>{{ job.stage }}</span>@if(job.progress !== null){<b>{{ job.progress.toFixed(0) }}%</b
+        >}
+      </div>
+      @if(job.status === 'running' || job.progress !== null){
+      <div class="progress">
+        <span
+          [style.width.%]="job.progress ?? 30"
+          [class.indeterminate]="job.progress === null"
+        ></span>
+      </div>
+      } @if(job.error){
+      <p class="job-error">{{ job.error }}</p>
+      } @if(job.destination){
+      <p class="job-destination">
+        <mx-icon name="Folder" [size]="13" />{{ display(job.destination) }}
+      </p>
+      }
+      <div class="job-actions">
+        @if(job.awaitingReview && ['pending','interrupted'].includes(job.status)){<button
+          class="button primary compact"
+          (click)="review(job)"
+        >
+          Revisar pistas</button
+        >}@if(job.status === 'pending' || job.status === 'running' || job.status ===
+        'interrupted'){<button class="button ghost compact" (click)="cancel(job)">Cancelar</button
+        >}@if(job.results.length){<button class="button ghost compact" (click)="openResult(job)">
+          <mx-icon name="FolderOpen" [size]="14" />Abrir destino</button
+        >}<button
+          class="button ghost compact"
+          (click)="selectedJob.set(selectedJob() === job.id ? null : job.id)"
+        >
+          Detalles
+        </button>
+      </div>
+      @if(selectedJob() === job.id){
+      <div class="job-details">
+        <code>{{ job.id }}</code>@for(message of job.messages; track $index){
+        <p>{{ message }}</p>
+        }@for(result of job.results; track result.path){
+        <p>Resultado: {{ display(result) }}</p>
+        }@if(['interrupted','failed','cancelled'].includes(job.status)){
+        <p>La limpieza elimina únicamente los temporales privados de este trabajo.</p>
+        <button class="button secondary compact" (click)="cleanup(job)">Limpiar temporales</button>}
+      </div>
+      }
+    </article>
+    } @empty {
+    <div class="state-box">
+      <mx-icon name="CheckCheck" [size]="40" />
+      <h3>Todo en orden</h3>
+      <p>Tus próximas operaciones aparecerán aquí.</p>
+    </div>
+    }
+  </div>
+  <footer>
+    <span class="status-dot"></span>Historial persistente · Máximo {{ api.system()?.concurrency ?? 1
+    }} trabajos simultáneos
+  </footer>
+</aside>
+} @if (context(); as ctx) {
+<div
+  class="context-backdrop"
+  (click)="context.set(null)"
+  (contextmenu)="$event.preventDefault(); context.set(null)"
+></div>
+<div class="context-menu" role="menu" [style.left.px]="ctx.x" [style.top.px]="ctx.y">
+  <div class="menu-label">
+    {{ ctx.entries.length ? ctx.entries.length + ' elementos seleccionados' : 'Esta carpeta' }}
+  </div>
+  @if(ctx.entries.length === 1 && isArchive(ctx.entries[0])) {<button
+    role="menuitem"
+    (click)="contextAction('extract')"
+  >
+    <mx-icon name="FileArchive" />Extraer…</button
+  ><button role="menuitem" (click)="contextAction('extract-here')">Extraer aquí</button
+  ><button role="menuitem" (click)="contextAction('extract-new')">Extraer en nueva carpeta</button>
+  <hr />
+  } @if(ctx.entries.length === 1 && isMedia(ctx.entries[0])) {<button
+    role="menuitem"
+    (click)="contextAction('remux')"
+  >
+    <mx-icon name="Film" />Abrir con MKVToolNix
+  </button>
+  <hr />
+  } @if(ctx.entries.length === 1 && isDisc(ctx.entries[0])) {<button
+    role="menuitem"
+    (click)="contextAction('disc')"
+  >
+    <mx-icon name="Disc3" />Abrir con MakeMKV
+  </button>
+  <hr />
+  } @if(ctx.entries.length && ctx.entries[0].kind !== 'blocked') {
+  <button role="menuitem" (click)="contextAction('copy')">
+    <mx-icon name="Copy" />Copiar a…<kbd>Ctrl C</kbd></button
+  ><button role="menuitem" (click)="contextAction('move')">
+    <mx-icon name="MoveRight" />Mover a…<kbd>Ctrl X</kbd></button
+  >@if(ctx.entries.length === 1){<button role="menuitem" (click)="contextAction('rename')">
+    <mx-icon name="Pencil" />Renombrar<kbd>F2</kbd></button
+  >}<button class="danger-text" role="menuitem" (click)="contextAction('delete')">
+    <mx-icon name="Trash2" />Eliminar<kbd>Supr</kbd>
+  </button>
+  <hr />
+  <button role="menuitem" (click)="contextAction('properties')">
+    <mx-icon name="Info" />Propiedades
+  </button>
+  } @else {<button role="menuitem" (click)="contextAction('mkdir')">
+    <mx-icon name="Plus" />Nueva carpeta</button
+  >}
+</div>
+} @if(dialog(); as modal){
+<div class="modal-backdrop" (mousedown)="$event.target === $event.currentTarget && close()">
+  <section
+    class="modal"
+    [class.wide]="modal === 'remux' || modal === 'disc' || modal === 'review'"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modal-title"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+  >
+    <header class="modal-header">
+      <div>
+        <div class="eyebrow">
+          {{ modal === 'remux' ? 'MKVTOOLNIX' : modal === 'disc' || modal === 'review' ? 'MAKEMKV' :
+          'MUXPLORER' }}
+        </div>
+        <h2 id="modal-title">
+          {{ modal === 'mkdir' ? 'Nueva carpeta' : modal === 'rename' ? 'Cambiar nombre' : modal ===
+          'delete' ? 'Eliminar elementos' : modal === 'transfer' ? 'Transferir archivos' : modal ===
+          'extract' ? 'Extraer archivo' : modal === 'remux' ? 'Prepara tu MKV' : modal === 'disc' ?
+          'Del disco a tu biblioteca' : modal === 'review' ? 'Elige las pistas definitivas' : modal
+          === 'settings' ? 'Tu servidor' : modal === 'shortcuts' ? 'Muévete con el teclado' :
+          'Propiedades' }}
+        </h2>
+      </div>
+      <button class="icon-button" (click)="close()" [disabled]="busy()" aria-label="Cerrar diálogo">
+        <mx-icon name="X" />
+      </button>
+    </header>
+    <div class="modal-body">
+      @if(modal === 'mkdir' || modal === 'rename') {
+      <p class="muted">
+        {{ modal === 'mkdir' ? 'Crea una carpeta en ' + display(currentAction()!.location) : 'Nuevo
+        nombre para ' + currentAction()!.entries[0].name }}
+      </p>
+      <label
+        >Nombre<input
+          [(ngModel)]="name"
+          (keydown.enter)="submit()"
+          cdkFocusInitial
+          autofocus
+          maxlength="240" /></label
+      >} @if(modal === 'delete'){
+      <div class="warning-banner">
+        <mx-icon name="Trash2" [size]="24" />
+        <div>
+          <b>Esta eliminación es permanente</b>
+          <p>
+            Se eliminarán {{ currentAction()!.entries.length }} elementos del servidor, incluido el
+            contenido de las carpetas.
+          </p>
+        </div>
+      </div>
+      <ul class="selection-list">
+        @for(entry of currentAction()!.entries; track entry.name){
+        <li><mx-icon [name]="entry.kind === 'directory' ? 'Folder' : 'File'" />{{ entry.name }}</li>
+        }
+      </ul>
+      <p class="muted">
+        Si utilizas snapshots de ZFS, la recuperación depende de su configuración.
+      </p>
+      } @if(modal === 'transfer'){
+      <div class="segmented">
+        <button [class.selected]="transfer === 'copy'" (click)="transfer = 'copy'">
+          <mx-icon name="Copy" />Copiar</button
+        ><button [class.selected]="transfer === 'move'" (click)="transfer = 'move'">
+          <mx-icon name="MoveRight" />Mover
+        </button>
+      </div>
+      <p class="muted">
+        {{ currentAction()!.entries.length }} elementos · {{ transfer === 'move' ? 'El origen se
+        elimina después de verificar la copia entre datasets.' : 'Los originales se conservan en su
+        ubicación.' }}
+      </p>
+      <ul class="selection-list compact-list">
+        @for(entry of currentAction()!.entries; track entry.name){
+        <li><mx-icon [name]="entry.kind === 'directory' ? 'Folder' : 'File'" />{{ entry.name }}</li>
+        }
+      </ul>
+      } @if(modal === 'extract'){
+      <div class="source-card">
+        <mx-icon name="FileArchive" [size]="26" />
+        <div>
+          <b>{{ currentAction()!.entries[0].name }}</b
+          ><small>{{ display(currentAction()!.entries[0].location) }}</small>
+        </div>
+      </div>
+      <label class="checkbox-label"
+        ><input type="checkbox" [(ngModel)]="createSubfolder" />Crear una subcarpeta para el
+        resultado</label
+      >@if(createSubfolder){<label
+        >Nombre de subcarpeta<input [(ngModel)]="name" maxlength="240" /></label
+      >}<label
+        >Contraseña <span class="optional">opcional</span
+        ><input
+          type="password"
+          [(ngModel)]="archivePassword"
+          autocomplete="off"
+          placeholder="Solo si el archivo está protegido"
+      /></label>
+      <p class="field-help">No se guarda la contraseña en el historial.</p>
+      } @if(modal === 'remux'){
+      <p class="muted">
+        Conserva solo lo que necesitas. Arrastra las pistas para cambiar el orden. El original se
+        mantiene intacto.
+      </p>
+      <div class="source-chips">
+        @for(source of sources(); track $index){<span
+          ><mx-icon name="FileVideo" [size]="14" />{{ source.location.path.split('/').pop() }}</span
+        >}<button
+          class="button secondary compact"
+          (click)="picking.set('external')"
+          [disabled]="busy()"
+        >
+          <mx-icon name="Plus" [size]="14" />Añadir audio o subtítulos
+        </button>
+      </div>
+      <mx-tracks [tracks]="tracks()" />
+      <div class="form-grid">
+        <label
+          >Título del MKV<input [(ngModel)]="title" placeholder="Título de la película" /></label
+        ><label>Archivo de salida<input [(ngModel)]="name" placeholder="Pelicula.mkv" /></label>
+      </div>
+      <div class="info-banner">
+        <mx-icon name="Info" [size]="16" />Remultiplexado sin recodificar. No cambia la calidad de
+        vídeo o audio.
+      </div>
+      } @if(modal === 'disc'){
+      <p class="muted">
+        Selecciona los títulos que quieres extraer. Después revisarás las pistas reales antes de
+        crear los MKV definitivos.
+      </p>
+      @if(disc(); as content){
+      <div class="disc-titles">
+        @for(discTitle of content.titles; track discTitle.id){
+        <article class="disc-title" [class.selected]="selectedTitles().has(discTitle.id)">
+          <label class="title-check"
+            ><input
+              type="checkbox"
+              [checked]="selectedTitles().has(discTitle.id)"
+              (change)="toggleTitle(discTitle.id)"
+            /><b>{{ discTitle.name }}</b><span>#{{ discTitle.id }}</span></label
+          >
+          <div class="disc-metadata">
+            <span>{{ discTitle.duration }}</span><span>{{ discTitle.size }}</span
+            ><span>{{ discTitle.chapters }} capítulos</span>
+          </div>
+          <div class="disc-streams">
+            @for(stream of discTitle.streams; track stream.id){<span [title]="stream.description"
+              >{{ stream.type }} · {{ stream.codec }} · {{ stream.language }}</span
+            >}
+          </div>
+        </article>
+        }
+      </div>
+      <label>Nombre base de salida<input [(ngModel)]="name" placeholder="Pelicula" /></label>}
+      <div class="info-banner">
+        <mx-icon name="Layers" [size]="16" />Extracción temporal → revisión de pistas → remux →
+        publicación. Reserva espacio para el temporal y el resultado.
+      </div>
+      } @if(modal === 'review'){
+      <div class="info-banner">
+        <mx-icon name="ShieldCheck" />Estas son las pistas del MKV que MakeMKV ha generado. Confirma
+        qué conservar; no se deducen correspondencias con el disco.
+      </div>
+      @for(file of reviewFiles(); track file.index){<label
+        >Archivo de salida<input [(ngModel)]="file.name" /></label
+      ><mx-tracks [tracks]="file.tracks" />}
+      <p class="muted">Destino: {{ display(reviewJob()!.destination!) }}</p>
+      } @if(modal === 'properties'){
+      <dl class="properties">
+        @for(entry of currentAction()!.entries; track entry.name){
+        <dt>{{ entry.name }}</dt>
+        <dd>{{ display(entry.location) }}</dd>
+        <dd>
+          {{ entry.kind === 'directory' ? 'Carpeta · tamaño del contenido no calculado' :
+          bytes(entry.size) }}
+        </dd>
+        <dd>Modificado {{ entry.modified | date:'dd/MM/yyyy HH:mm:ss' }}</dd>
+        }
+      </dl>
+      } @if(modal === 'settings'){
+      <p class="muted">Muxplorer 0.1.0 · Tus archivos se procesan en el servidor.</p>
+      <div class="tool-list">
+        @if(api.system(); as system){@for(tool of toolKeys; track tool){
+        <div class="tool-item">
+          <span class="status-dot" [class.warning]="!system.tools[tool].available"></span>
+          <div>
+            <b
+              >{{ tool === 'sevenZip' ? '7-Zip' : tool === 'mkvmerge' ? 'MKVToolNix' : 'MakeMKV'
+              }}</b
+            ><small>{{ system.tools[tool].version || system.tools[tool].error }}</small>
+          </div>
+          <span>{{ system.tools[tool].available ? 'Disponible' : 'No disponible' }}</span>
+        </div>
+        }}
+      </div>
+      <div class="info-banner">
+        <mx-icon name="Info" />MakeMKV requiere instalación y licencia según sus condiciones.
+        Consulta README.md para preparar tu imagen privada y configurar la activación.
+      </div>
+      @if(api.system()?.tools?.makemkv?.licenseRequired){
+      <div class="license-accept">
+        <a href="/api/makemkv/license" target="_blank" rel="noopener"
+          >Leer la licencia completa de MakeMKV ↗</a
+        ><label class="checkbox-label"
+          ><input type="checkbox" [(ngModel)]="licenseAccepted" />He leído y acepto las condiciones
+          de MakeMKV.</label
+        ><button class="button secondary" [disabled]="!licenseAccepted" (click)="acceptLicense()">
+          Habilitar MakeMKV
+        </button>
+      </div>
+      }
+      <p class="muted">
+        Concurrencia: {{ api.system()?.concurrency ?? 1 }} · Dos raíces autorizadas · Sesión de 12
+        horas
+      </p>
+      } @if(modal === 'shortcuts'){
+      <dl class="shortcut-list">
+        <dt>Seleccionar varios</dt>
+        <dd><kbd>Ctrl</kbd> + clic</dd>
+        <dt>Seleccionar un rango</dt>
+        <dd><kbd>Shift</kbd> + clic</dd>
+        <dt>Seleccionar todo</dt>
+        <dd><kbd>Ctrl A</kbd></dd>
+        <dt>Copiar / mover / pegar</dt>
+        <dd><kbd>Ctrl C</kbd> <kbd>Ctrl X</kbd> <kbd>Ctrl V</kbd></dd>
+        <dt>Renombrar / eliminar</dt>
+        <dd><kbd>F2</kbd> <kbd>Supr</kbd></dd>
+        <dt>Abrir / subir carpeta</dt>
+        <dd><kbd>Enter</kbd> <kbd>Retroceso</kbd></dd>
+        <dt>Actualizar / cerrar</dt>
+        <dd><kbd>F5</kbd> <kbd>Esc</kbd></dd>
+      </dl>
+      } @if(['transfer','extract','remux','disc'].includes(modal)){<label class="destination-label"
+        >Carpeta de destino</label
+      ><button
+        class="destination-card"
+        (click)="picking.set(picking() === 'destination' ? null : 'destination')"
+      >
+        <mx-icon name="FolderOpen" [size]="21" /><span>{{ display(destination()) }}</span
+        ><b>Cambiar</b><mx-icon name="ChevronRight" [size]="16" /></button
+      >} @if(picking()){
+      <section class="picker-area">
+        <div class="picker-heading">
+          <b
+            >{{ picking() === 'external' ? 'Elige un archivo de audio, subtítulos o contenedor' :
+            'Navega hasta la carpeta de destino' }}</b
+          ><button class="icon-button" (click)="picking.set(null)" title="Cerrar selector">
+            <mx-icon name="X" [size]="16" />
+          </button>
+        </div>
+        <mx-explorer
+          #picker
+          panelId="picker"
+          [picker]="true"
+          [filePicker]="picking() === 'external'"
+          [initialRoot]="destination().root"
+          (navigated)="picking() === 'destination' && destination.set($event)"
+          (action)="choose($event)"
+        />
+        <div class="picker-footer">
+          @if(picking() === 'destination'){<span>{{ display(picker.location()) }}</span
+          ><button
+            class="button primary compact"
+            (click)="destination.set(picker.location()); picking.set(null)"
+          >
+            Usar esta carpeta</button
+          >}@else{<span>Doble clic en un archivo para inspeccionar sus pistas.</span>}
+        </div>
+      </section>
+      } @if(busy()){
+      <div class="busy-line">
+        <mx-icon name="LoaderCircle" class="spinning" [size]="18" />{{ modal === 'disc' ? 'MakeMKV
+        está analizando el origen…' : 'Procesando…' }}
+      </div>
+      } @if(error()){
+      <div class="inline-error" role="alert"><mx-icon name="AlertCircle" />{{ error() }}</div>
+      }
+    </div>
+    <footer class="modal-footer">
+      <span class="footer-note"
+        ><mx-icon name="LockKeyhole" [size]="13" />{{ modal === 'delete' ? 'Acción permanente' :
+        'Sin transferencias por el navegador' }}</span
+      ><button class="button secondary" (click)="close()" [disabled]="busy()">
+        {{ ['settings','properties','shortcuts'].includes(modal) ? 'Cerrar' : 'Cancelar' }}</button
+      >@if(!['settings','properties','shortcuts'].includes(modal)){<button
+        class="button"
+        [class.danger]="modal === 'delete'"
+        [class.primary]="modal !== 'delete'"
+        (click)="submit()"
+        [disabled]="busy() || (modal === 'disc' && !selectedTitles().size) || (modal === 'remux' && !tracks().length)"
+      >
+        <mx-icon [name]="modal === 'delete' ? 'Trash2' : 'ArrowRight'" [size]="16" />{{ modal ===
+        'delete' ? 'Eliminar definitivamente' : modal === 'mkdir' ? 'Crear carpeta' : modal ===
+        'rename' ? 'Guardar nombre' : modal === 'remux' ? 'Crear MKV' : modal === 'disc' ? 'Extraer
+        y revisar pistas' : modal === 'review' ? 'Confirmar y crear MKV' : modal === 'extract' ?
+        'Extraer' : transfer === 'move' ? 'Mover aquí' : 'Copiar aquí' }}</button
+      >}
+    </footer>
+  </section>
+</div>
+} } @if(api.notice(); as notice){
+<div class="toast" role="status" [class.error]="notice.error">
+  <mx-icon [name]="notice.error ? 'AlertCircle' : 'Check'" [size]="19" /><span
+    >{{ notice.message }}</span
+  ><button class="icon-button" (click)="api.notice.set(null)" aria-label="Cerrar notificación">
+    <mx-icon name="X" [size]="15" />
+  </button>
+</div>
+}

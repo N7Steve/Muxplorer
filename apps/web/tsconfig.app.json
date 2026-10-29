@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "outDir": "./out-tsc",
+    "lib": ["ES2023", "DOM"],
+    "experimentalDecorators": true
+  },
+  "angularCompilerOptions": { "strictTemplates": true, "strictInjectionParameters": true },
+  "files": ["src/main.ts"],
+  "include": ["src/**/*.ts"]
+}

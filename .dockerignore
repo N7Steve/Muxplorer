@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/.angular
+.local
+**/.local
+**/out-tsc
+**/*.sqlite*
+docker/makemkv
+.env
+*.log
+test-results
+playwright-report

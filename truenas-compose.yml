@@ -1,0 +1,22 @@
+services:
+  muxplorer:
+    image: muxplorer:0.1.0
+    pull_policy: never
+    user: '1000:1000'
+    ports:
+      - '8098:8098'
+    environment:
+      TZ: Europe/Madrid
+      JOB_CONCURRENCY: '1'
+      COOKIE_SECURE: 'false'
+      MAKEMKV_ACCEPT_EULA: 'false'
+    volumes:
+      - /mnt/StevePool/Steve/Downloads:/data/downloads:rw
+      - /mnt/PlexPool/PlexMedia:/data/plex:rw
+      - muxplorer_config:/config
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 20s
+volumes:
+  muxplorer_config:
