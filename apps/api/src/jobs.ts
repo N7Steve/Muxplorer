@@ -5,6 +5,7 @@ import type { Job, JobKind, Location, ReviewFile } from '@muxplorer/shared';
 import { Store } from './store';
 import { config } from './config';
 import { errorText, problem } from './errors';
+import { diagnostic } from './diagnostics';
 export interface JobContext {
   id: string;
   signal: AbortSignal;
@@ -93,11 +94,13 @@ export class Jobs implements OnModuleDestroy {
       results: [],
     };
     this.save(job, payload);
+    diagnostic('job.queued', { jobId: job.id, kind, sources, destination });
     if (ephemeral) this.secrets.set(job.id, ephemeral);
     queueMicrotask(() => this.drain());
     return job;
   }
   cancel(id: string) {
+    diagnostic('job.cancel_requested', { jobId: id });
     const job = this.get(id);
     if (job.status === 'running') {
       const current = this.active.get(id);
@@ -150,6 +153,10 @@ export class Jobs implements OnModuleDestroy {
       job.status = 'running';
       job.stage = 'Preparando';
       this.save(job);
+      diagnostic('job.started', { jobId: job.id, kind: job.kind });
+      let loggedStage = '',
+        loggedProgress = -1,
+        loggedAt = 0;
       const context: JobContext = {
         id: job.id,
         signal: controller.signal,
@@ -157,14 +164,26 @@ export class Jobs implements OnModuleDestroy {
           if (controller.signal.aborted) return;
           job.stage = stage;
           job.progress = progress === null ? null : Math.max(0, Math.min(100, progress));
+          if (
+            stage !== loggedStage ||
+            Math.abs((job.progress ?? -1) - loggedProgress) >= 5 ||
+            Date.now() - loggedAt >= 15_000
+          ) {
+            diagnostic('job.progress', { jobId: job.id, stage, progress: job.progress });
+            loggedStage = stage;
+            loggedProgress = job.progress ?? -1;
+            loggedAt = Date.now();
+          }
           this.save(job);
         },
         message: (message) => {
+          diagnostic('job.message', { jobId: job.id, message: message.slice(0, 2000) });
           job.messages.push(message.slice(0, 8000));
           job.messages = job.messages.slice(-40);
           this.save(job);
         },
         result: (location) => {
+          diagnostic('job.result', { jobId: job.id, location });
           job.results.push(location);
           this.save(job);
         },
@@ -204,6 +223,14 @@ export class Jobs implements OnModuleDestroy {
           }
         })
         .finally(() => {
+          diagnostic('job.finished', {
+            jobId: job.id,
+            status: job.status,
+            stage: job.stage,
+            progress: job.progress,
+            error: job.error,
+            results: job.results,
+          });
           this.save(job);
           this.secrets.delete(job.id);
           this.running.delete(job.id);

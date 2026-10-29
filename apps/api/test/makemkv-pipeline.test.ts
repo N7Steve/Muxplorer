@@ -150,11 +150,17 @@ test('MakeMKV activates a fresh beta from the official page, retries and preserv
       return new Response(`<code>${key}</code>`);
     });
     let calls = 0;
+    let expiredVersion = false;
     class TrialProcess extends Processes {
       override async run() {
         calls++;
         return calls === 1
-          ? { code: 1, stdout: 'MSG:5053,1544,1,"Start evaluation period now?"' }
+          ? await super.run(process.execPath, [
+              '-e',
+              expiredVersion
+                ? `console.log('MSG:5021,0,1,"Version too old; enter a registration key"');process.exit(253)`
+                : `console.log('MSG:5053,1544,1,"Start evaluation period now?"');process.exit(139)`,
+            ])
           : { code: 0, stdout: 'TINFO:0,2,0,"Movie"' };
       }
     }
@@ -169,13 +175,17 @@ test('MakeMKV activates a fresh beta from the official page, retries and preserv
     const settings = await readFile(filename, 'utf8');
     assert.ok(settings.includes(`app_Key = "${key}"`));
     assert.ok(settings.includes('app_DefaultSelectionString = "+sel:all"'));
+    calls = 0;
+    expiredVersion = true;
+    assert.equal((await engine.inspect({ root: 'downloads', path: 'disc.iso' })).titles.length, 1);
+    assert.equal(calls, 2);
     await writeFile(filename, settings.replace(key, 'personal-license'));
     calls = 0;
     await assert.rejects(
       engine.inspect({ root: 'downloads', path: 'disc.iso' }),
       /Revisa tu licencia/,
     );
-    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.equal(fetchMock.mock.callCount(), 2);
     assert.ok((await readFile(filename, 'utf8')).includes('personal-license'));
     // A failed or changed official page leaves the existing configuration intact.
     await writeFile(filename, settings);

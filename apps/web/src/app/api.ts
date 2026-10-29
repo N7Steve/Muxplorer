@@ -10,6 +10,8 @@ export class Api {
   readonly connection = signal<'connected' | 'reconnecting'>('connected');
   readonly notice = signal<{ message: string; error: boolean } | null>(null);
   private stream?: EventSource;
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  private connectionGeneration = 0;
   private noticeTimer?: ReturnType<typeof setTimeout>;
   async request<T>(url: string, body?: unknown): Promise<T> {
     const response = await fetch(`/api/${url}`, {
@@ -33,9 +35,28 @@ export class Api {
   }
   async syncJobs() {
     const jobs = await this.request<Job[]>('jobs');
+    this.applyJobs(jobs);
+  }
+  private applyJobs(jobs: Job[]) {
+    const previous = this.jobs();
     this.jobs.update((current) => mergeJobs(current, jobs));
+    for (const job of jobs) {
+      const before = previous.find((item) => item.id === job.id);
+      if (this.jobs().find((item) => item.id === job.id) !== job) continue;
+      if (before && job.status === 'completed' && before.status !== 'completed') {
+        this.revision.update((r) => r + 1);
+        this.toast('Operación completada. El resultado está disponible.');
+      }
+      if (before && job.status === 'failed' && before.status !== 'failed') {
+        this.revision.update((r) => r + 1);
+        this.toast(new Error(job.error ?? 'La operación ha fallado.'));
+      }
+      if (job.results.length !== before?.results.length) this.revision.update((r) => r + 1);
+    }
   }
   async connect() {
+    this.disconnect();
+    const generation = this.connectionGeneration;
     this.roots.set(await this.request<Root[]>('roots'));
     await this.syncJobs();
     void this.request<SystemStatus>('system')
@@ -43,6 +64,21 @@ export class Api {
       .catch((error) => this.toast(error));
     this.stream?.close();
     this.stream = new EventSource('/api/jobs/events');
+    // Some proxies hold SSE data while keeping the connection open. HTTP snapshots
+    // keep progress and completion current even when no stream error is reported.
+    const poll = async () => {
+      if (generation !== this.connectionGeneration) return;
+      try {
+        const jobs = await this.request<Job[]>('jobs');
+        if (generation === this.connectionGeneration) this.applyJobs(jobs);
+      } catch {
+        // The stream and the next snapshot can recover without repeated toasts.
+      } finally {
+        if (generation === this.connectionGeneration)
+          this.pollTimer = setTimeout(() => void poll(), 2000);
+      }
+    };
+    this.pollTimer = setTimeout(() => void poll(), 2000);
     this.stream.onopen = () => {
       this.connection.set('connected');
       void this.syncJobs().then(() => {
@@ -53,21 +89,12 @@ export class Api {
     this.stream.onmessage = (event) => {
       const job = JSON.parse(event.data) as Job;
       if (!job.id) return;
-      const previous = this.jobs().find((j) => j.id === job.id);
-      this.jobs.update((jobs) => mergeJobs(jobs, [job]));
-      if (this.jobs().find((current) => current.id === job.id) !== job) return;
-      if (job.status === 'completed' && previous?.status !== 'completed') {
-        this.revision.update((r) => r + 1);
-        this.toast('Operación completada. El resultado está disponible.');
-      }
-      if (job.status === 'failed' && previous?.status !== 'failed') {
-        this.revision.update((r) => r + 1);
-        this.toast(new Error(job.error ?? 'La operación ha fallado.'));
-      }
-      if (job.results.length !== previous?.results.length) this.revision.update((r) => r + 1);
+      this.applyJobs([job]);
     };
   }
   disconnect() {
+    this.connectionGeneration++;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
     this.stream?.close();
   }
   toast(value: unknown) {

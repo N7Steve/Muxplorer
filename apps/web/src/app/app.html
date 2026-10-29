@@ -54,7 +54,7 @@
       <mx-icon name="ShieldCheck" [size]="15" />Procesamiento local · Acceso protegido
     </div>
   </section>
-  <span class="login-version">MUXPLORER · 0.1.2</span>
+  <span class="login-version">MUXPLORER · 0.1.3</span>
 </main>
 } @else {
 <div class="app-shell">
@@ -125,7 +125,7 @@
             name="CircleHelp"
             [size]="14"
           /></button
-        ><span class="sidebar-version">MUXPLORER / 0.1.2</span>
+        ><span class="sidebar-version">MUXPLORER / 0.1.3</span>
       </div>
     </aside>
     <main class="main-area">
@@ -239,7 +239,7 @@
       <div class="job-title">
         <span class="job-icon"
           ><mx-icon
-            [name]="job.kind === 'extract' ? 'FileArchive' : job.kind === 'remux' || job.kind === 'makemkv' ? 'Film' : job.kind === 'delete' ? 'Trash2' : 'Copy'"
+            [name]="job.kind === 'extract' ? 'FileArchive' : job.kind === 'remux' || job.kind === 'makemkv' || job.kind === 'disc' ? 'Film' : job.kind === 'delete' ? 'Trash2' : 'Copy'"
         /></span>
         <div>
           <b>{{ jobLabels[job.kind] }}</b><small>{{ job.createdAt | date:'dd MMM, HH:mm' }}</small>
@@ -339,8 +339,10 @@
   <hr />
   } @if(ctx.entries.length === 1 && isDisc(ctx.entries[0])) {<button
     role="menuitem"
-    (click)="contextAction('disc')"
+    (click)="contextAction('disc-mkvtoolnix')"
   >
+    <mx-icon name="Film" />Abrir con MKVToolNix</button
+  ><button role="menuitem" (click)="contextAction('disc')">
     <mx-icon name="Disc3" />Abrir con MakeMKV
   </button>
   <hr />
@@ -376,8 +378,8 @@
     <header class="modal-header">
       <div>
         <div class="eyebrow">
-          {{ modal === 'remux' ? 'MKVTOOLNIX' : modal === 'disc' || modal === 'review' ? 'MAKEMKV' :
-          'MUXPLORER' }}
+          {{ modal === 'remux' ? 'MKVTOOLNIX' : modal === 'disc' ? (discEngine() === 'disc' ?
+          'MKVTOOLNIX' : 'MAKEMKV') : modal === 'review' ? 'REVISIÓN DE PISTAS' : 'MUXPLORER' }}
         </div>
         <h2 id="modal-title">
           {{ modal === 'mkdir' ? 'Nueva carpeta' : modal === 'rename' ? 'Cambiar nombre' : modal ===
@@ -490,7 +492,12 @@
         <mx-icon name="Info" [size]="16" />Remultiplexado sin recodificar. No cambia la calidad de
         vídeo o audio.
       </div>
-      } @if(modal === 'disc'){
+      } @if(modal === 'disc'){ @if(discEngine() === 'disc'){
+      <div class="info-banner">
+        <mx-icon name="Info" />Para fuentes descifradas. Las ISO se extraen temporalmente junto al
+        origen: reserva espacio para su contenido y los MKV. Los DVD se muestran por conjunto VTS.
+      </div>
+      }
       <p class="muted">
         Selecciona los títulos que quieres extraer. Después revisarás las pistas reales antes de
         crear los MKV definitivos.
@@ -525,8 +532,8 @@
       </div>
       } @if(modal === 'review'){
       <div class="info-banner">
-        <mx-icon name="ShieldCheck" />Estas son las pistas del MKV que MakeMKV ha generado. Confirma
-        qué conservar; no se deducen correspondencias con el disco.
+        <mx-icon name="ShieldCheck" />Estas son las pistas reales del MKV generado. Confirma qué
+        conservar; no se deducen correspondencias con el disco.
       </div>
       @for(file of reviewFiles(); track file.index){<label
         >Archivo de salida<input [(ngModel)]="file.name" /></label
@@ -545,7 +552,7 @@
         }
       </dl>
       } @if(modal === 'settings'){
-      <p class="muted">Muxplorer 0.1.2 · Tus archivos se procesan en el servidor.</p>
+      <p class="muted">Muxplorer 0.1.3 · Tus archivos se procesan en el servidor.</p>
       <div class="tool-list">
         @if(api.system(); as system){@for(tool of toolKeys; track tool){
         <div class="tool-item">
@@ -620,7 +627,7 @@
       </section>
       } @if(busy()){
       <div class="busy-line">
-        <mx-icon name="LoaderCircle" class="spinning" [size]="18" />{{ modal === 'disc' ? 'MakeMKV
+        <mx-icon name="LoaderCircle" class="spinning" [size]="18" />{{ modal === 'disc' ? 'El motor
         está analizando el origen…' : 'Procesando…' }}
       </div>
       } @if(error()){

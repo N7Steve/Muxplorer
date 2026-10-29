@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-docker-'));
 const name = `muxplorer-smoke-${Date.now()}`;
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.2';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.3';
 const keep = process.env.MUXPLORER_KEEP_TEST_CONTAINER === 'true';
 const password = 'Muxplorer-test-password-2026';
 const username = 'mux-admin';
@@ -311,6 +311,82 @@ try {
   assert.equal(result.tracks[0].name, 'Castellano');
   assert.equal(result.tracks[0].forced, true);
   assert.equal(result.tracks[0].language, 'es');
+  // Synthetic 125-second Blu-ray (AVC + AC3), generated from black video and silent audio.
+  // Exercise the real MPLS reader, ISO extraction, checkpoint and reviewed publication.
+  docker('cp', path.resolve('tests/fixtures/disc.zip'), `${name}:/tmp/disc.zip`);
+  docker('exec', name, '7zz', 'x', '-y', '-o/data/downloads/Disc fixture', '/tmp/disc.zip');
+  for (const engine of ['disc', 'makemkv']) {
+    for (const source of ['Disc fixture/BDMV/index.bdmv', 'Disc fixture/bluray.iso']) {
+      const disc = await request(`${engine}/inspect`, downloads(source), 201);
+      assert.equal(disc.titles.length, 1);
+      if (engine === 'disc') assert.equal(disc.titles[0].duration, '00:02:05');
+      if (engine === 'disc') assert.equal(disc.titles[0].streams.length, 2);
+      else assert.ok(disc.titles[0].streams.length >= 1);
+      const output = `${engine}-${source.endsWith('.iso') ? 'iso' : 'bdmv'}.mkv`;
+      const queued = await request(
+        `${engine}/convert`,
+        {
+          source: downloads(source),
+          destination: plex(''),
+          titles: [disc.titles[0].id],
+          name: output,
+        },
+        201,
+      );
+      let review;
+      for (let attempt = 0; attempt < 200; attempt++) {
+        review = (await request('jobs')).find((j) => j.id === queued.id);
+        if (review.awaitingReview || review.status === 'failed') break;
+        await pause(100);
+      }
+      assert.ok(review.awaitingReview, JSON.stringify(review));
+      assert.ok(!(await request('files?root=plex&path=')).some((e) => e.name === output));
+      await request(
+        `jobs/${queued.id}/review`,
+        {
+          files: review.awaitingReview.map((file) => ({
+            index: file.index,
+            name: file.name,
+            tracks: file.tracks.map((t) => ({
+              source: 0,
+              id: t.id,
+              enabled: true,
+              name: t.name,
+              language: t.language,
+              default: t.default,
+              forced: t.forced,
+            })),
+          })),
+        },
+        201,
+      );
+      let finished;
+      for (let attempt = 0; attempt < 200; attempt++) {
+        finished = (await request('jobs')).find((j) => j.id === queued.id);
+        if (['completed', 'failed'].includes(finished.status)) break;
+        await pause(100);
+      }
+      assert.equal(finished.status, 'completed', JSON.stringify(finished));
+      assert.equal(
+        (await request('media/inspect', plex(output), 201)).tracks.length,
+        review.awaitingReview[0].tracks.length,
+      );
+      if (engine === 'disc') {
+        const identified = JSON.parse(
+          docker('exec', name, 'mkvmerge', '-J', `/data/plex/${output}`),
+        );
+        assert.equal(
+          identified.chapters.reduce((n, c) => n + c.num_entries, 0),
+          Number(disc.titles[0].chapters),
+        );
+      }
+    }
+  }
+  assert.ok(
+    !(await request('files?root=downloads&path=Disc%20fixture')).some((e) =>
+      e.name.startsWith('.muxplorer-'),
+    ),
+  );
   const sse = await fetch(`${base}/api/jobs/events`, {
     headers: { cookie },
     signal: AbortSignal.timeout(1000),
@@ -404,6 +480,7 @@ try {
           'tar.gz',
           'malicious archive',
           'multi-source remux',
+          'native BDMV and ISO reviewed remux with MKVToolNix',
           'track flags and ordering',
           'SSE',
           'persistent history',

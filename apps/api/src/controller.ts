@@ -8,6 +8,7 @@ import {
   Query,
   Param,
   Sse,
+  Header,
   UseGuards,
   OnModuleInit,
 } from '@nestjs/common';
@@ -26,6 +27,8 @@ import { Processes } from './process';
 import { config } from './config';
 import { errorText, problem } from './errors';
 import * as contract from './contracts';
+import { diagnostic } from './diagnostics';
+import { Discs } from './discs';
 @Controller('api')
 export class PublicController {
   constructor(private readonly auth: Auth) {}
@@ -79,6 +82,7 @@ export class ApiController implements OnModuleInit {
     private readonly make: MakeMkv,
     private readonly processes: Processes,
     private readonly auth: Auth,
+    private readonly discs: Discs,
   ) {}
   onModuleInit() {
     for (const kind of ['copy', 'move', 'delete'] as const)
@@ -93,6 +97,9 @@ export class ApiController implements OnModuleInit {
     );
     this.jobs.register('makemkv', (payload, context) =>
       this.make.convert(payload as MakeRequest, context),
+    );
+    this.jobs.register('disc', (payload, context) =>
+      this.discs.convert(payload as MakeRequest, context),
     );
   }
   @Get('roots') roots() {
@@ -142,6 +149,13 @@ export class ApiController implements OnModuleInit {
   @Post('makemkv/inspect') disc(@Body() body: unknown) {
     return this.make.inspect(contract.parse(contract.location, body));
   }
+  @Post('disc/inspect') inspectDisc(@Body() body: unknown) {
+    return this.discs.inspect(contract.parse(contract.location, body));
+  }
+  @Post('disc/convert') convertDisc(@Body() body: unknown) {
+    const data = contract.parse(contract.make, body);
+    return this.jobs.enqueue('disc', data, [data.source], data.destination);
+  }
   @Get('makemkv/license') async license(@Res() res: Response) {
     res.type('text/plain').send(await readFile(config.LICENSE_FILE, 'utf8'));
   }
@@ -152,7 +166,11 @@ export class ApiController implements OnModuleInit {
   @Get('jobs') listJobs() {
     return this.jobs.list();
   }
-  @Sse('jobs/events') events(@Req() req: Request) {
+  @Header('X-Accel-Buffering', 'no')
+  @Sse('jobs/events')
+  events(@Req() req: Request) {
+    diagnostic('sse.connected');
+    req.once('close', () => diagnostic('sse.disconnected'));
     return merge(
       this.jobs.events,
       interval(15_000).pipe(map(() => ({ data: { heartbeat: true } }))),
@@ -189,7 +207,7 @@ export class ApiController implements OnModuleInit {
       body,
     );
     const job = this.jobs.get(id);
-    if (job.kind !== 'makemkv') problem('Trabajo incompatible.');
+    if (!['makemkv', 'disc'].includes(job.kind)) problem('Trabajo incompatible.');
     const payload = this.jobs.payload(id) as MakeRequest;
     payload.review = data.files;
     return this.jobs.resumeReview(id, payload);
@@ -213,7 +231,7 @@ export class ApiController implements OnModuleInit {
         try {
           const result = await this.processes.run(binary as string, args as string[], {
             timeout: 15_000,
-            allowedCodes: [0, 1],
+            allowedCodes: key === 'makemkv' ? [0, 1, 10, 253] : [0, 1],
             ...(key === 'makemkv' ? { env: this.make.env() } : {}),
           });
           const versionLine =

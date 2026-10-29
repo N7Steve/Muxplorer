@@ -159,3 +159,27 @@ test('jobs persist errors, safe review checkpoints and mark unfinished work inte
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+test('process diagnostics correlate exits and redact passwords and beta keys', async (t) => {
+  const logs: string[] = [];
+  t.mock.method(console, 'log', (line: string) => {
+    logs.push(line);
+  });
+  const beta = 'T-' + 'a'.repeat(66);
+  await assert.rejects(
+    new Processes().run(
+      process.execPath,
+      ['-e', `console.error('TOPSECRET ${beta}');process.exit(2)`],
+      { jobId: 'log-fixture', secrets: ['TOPSECRET'] },
+    ),
+  );
+  const records = logs.map((line) => JSON.parse(line));
+  const start = records.find((record) => record.event === 'process.start');
+  const end = records.find((record) => record.event === 'process.exit');
+  assert.equal(start.jobId, 'log-fixture');
+  assert.equal(end.processId, start.processId);
+  assert.equal(end.code, 2);
+  assert.ok(!logs.join('').includes('TOPSECRET'));
+  assert.ok(!logs.join('').includes(beta));
+  assert.ok(end.detail.includes('[oculto]'));
+});

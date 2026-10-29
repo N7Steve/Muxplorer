@@ -70,6 +70,7 @@ export class AppComponent {
   readonly sources = signal<Media[]>([]);
   readonly tracks = signal<EditableTrack[]>([]);
   readonly disc = signal<Disc | null>(null);
+  readonly discEngine = signal<'makemkv' | 'disc'>('makemkv');
   readonly selectedTitles = signal<Set<number>>(new Set());
   readonly reviewJob = signal<Job | null>(null);
   readonly reviewFiles = signal<{ index: number; name: string; tracks: EditableTrack[] }[]>([]);
@@ -103,6 +104,7 @@ export class AppComponent {
     extract: 'Extracción',
     remux: 'Remux MKV',
     makemkv: 'MakeMKV',
+    disc: 'Disco · MKVToolNix',
   };
   readonly statusLabels: Record<string, string> = {
     pending: 'Pendiente',
@@ -262,14 +264,17 @@ export class AppComponent {
       this.name = action.entries[0].name.replace(/\.[^.]+$/, '') + '.remux.mkv';
       this.dialog.set('remux');
       await this.addSource(action.entries[0].location);
-    } else if (action.action === 'disc' && action.entries.length === 1) {
+    } else if (['disc', 'disc-mkvtoolnix'].includes(action.action) && action.entries.length === 1) {
+      this.discEngine.set(action.action === 'disc' ? 'makemkv' : 'disc');
       this.disc.set(null);
       this.selectedTitles.set(new Set());
       this.name = action.entries[0].name.replace(/\.[^.]+$/, '') || 'pelicula';
       this.dialog.set('disc');
       this.busy.set(true);
       try {
-        this.disc.set(await this.api.request<Disc>('makemkv/inspect', action.entries[0].location));
+        this.disc.set(
+          await this.api.request<Disc>(`${this.discEngine()}/inspect`, action.entries[0].location),
+        );
       } catch (error) {
         this.error.set(this.message(error));
       } finally {
@@ -385,13 +390,13 @@ export class AppComponent {
           break;
         }
         case 'disc':
-          await this.api.request('makemkv/convert', {
+          await this.api.request(`${this.discEngine()}/convert`, {
             source: sources[0],
             destination: this.destination(),
             titles: [...this.selectedTitles()],
             name: this.name,
           });
-          message = 'MakeMKV añadido. Podrás revisar las pistas tras la extracción.';
+          message = 'Disco añadido. Podrás revisar las pistas tras la extracción.';
           break;
         case 'review':
           await this.api.request(`jobs/${this.reviewJob()!.id}/review`, {

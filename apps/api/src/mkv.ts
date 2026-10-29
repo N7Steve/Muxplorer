@@ -146,6 +146,7 @@ export class Mkv {
       mkvArguments(request, sources, output),
       {
         signal: context.signal,
+        jobId: context.id,
         allowedCodes: [0, 1],
         onLine: (line) => {
           const progress = /#GUI#progress\s+(\d+)%/.exec(line);

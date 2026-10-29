@@ -11,6 +11,8 @@ test.beforeAll(() => {
   if (!safe) return;
   const exec = (...args: string[]) =>
     execFileSync('docker', ['exec', container!, ...args], { stdio: 'pipe' });
+  execFileSync('docker', ['cp', 'tests/fixtures/disc.zip', `${container}:/tmp/disc.zip`]);
+  exec('7zz', 'x', '-y', '-o/data/downloads/Disc fixture', '/tmp/disc.zip');
   exec(
     'node',
     '-e',
@@ -44,12 +46,12 @@ test('all media engines are available automatically without an extra MakeMKV set
 }) => {
   await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Muxplorer 0.1.2', { exact: false })).toBeVisible();
+  await expect(modal.getByText('Muxplorer 0.1.3', { exact: false })).toBeVisible();
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
     'Disponible',
   );
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
-    'MakeMKV v2.0.0',
+    'MakeMKV v1.18.4',
   );
   await expect(modal.getByRole('button', { name: 'Habilitar MakeMKV' })).toHaveCount(0);
   await expect(modal.getByText('MakeMKV requiere instalación', { exact: false })).toHaveCount(0);
@@ -132,4 +134,70 @@ test('multiple selection, drag and drop confirmation and mobile layout', async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('progress follows HTTP snapshots even when the SSE connection stays open without updates', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class SilentEvents {
+      onopen?: () => void;
+      onmessage?: () => void;
+      onerror?: () => void;
+      constructor() {
+        setTimeout(() => this.onopen?.(), 0);
+      }
+      close() {}
+    }
+    Object.defineProperty(window, 'EventSource', { value: SilentEvents });
+  });
+  let requests = 0;
+  let progress = 98;
+  await page.route('**/api/jobs', async (route) => {
+    requests++;
+    await route.fulfill({
+      json: [
+        {
+          id: 'progress-poll-fixture',
+          kind: 'extract',
+          status: 'running',
+          revision: requests,
+          createdAt: '2026-10-29T08:00:00Z',
+          updatedAt: new Date().toISOString(),
+          sources: [{ root: 'downloads', path: 'progress-fixture.rar' }],
+          destination: { root: 'plex', path: '' },
+          progress,
+          stage: 'Extrayendo con 7-Zip',
+          messages: [],
+          results: [],
+        },
+      ],
+    });
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
+  const job = page
+    .getByRole('complementary', { name: 'Panel de operaciones' })
+    .locator('article')
+    .filter({ hasText: 'progress-fixture.rar' });
+  await expect(job.getByText('98%', { exact: true })).toBeVisible();
+  progress = 17;
+  await expect(job.getByText('17%', { exact: true })).toBeVisible({ timeout: 7000 });
+  progress = 46;
+  await expect(job.getByText('46%', { exact: true })).toBeVisible({ timeout: 7000 });
+});
+
+test('disc context menu offers both MKVToolNix and MakeMKV', async ({ page }) => {
+  const left = page.locator('mx-explorer[panelId="left"]');
+  await left.getByRole('row').filter({ hasText: 'Disc fixture' }).dblclick();
+  await left.getByRole('row').filter({ hasText: /^BDMV/ }).dblclick();
+  await left.getByRole('row').filter({ hasText: 'index.bdmv' }).click({ button: 'right' });
+  await expect(
+    page.getByRole('menuitem', { name: 'Abrir con MakeMKV', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await expect(modal.getByText('Lista 00000.mpls', { exact: true })).toBeVisible();
+  await expect(modal.getByText('00:02:05', { exact: true })).toBeVisible();
+  await expect(modal.getByText('MKVTOOLNIX', { exact: true })).toBeVisible();
 });

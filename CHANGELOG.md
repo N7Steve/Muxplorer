@@ -1,5 +1,13 @@
 # Cambios
 
+## 0.1.3
+
+- Dos opciones para ISO/BDMV: MKVToolNix 103.0 sobre fuentes descifradas (con capítulos MPLS) y MakeMKV.
+- MakeMKV fijado a 1.18.4 para evitar la regresión Linux de 2.0.0 al abrir Blu-ray desde archivos; recuperación de activación también tras salida anormal o aviso de versión antigua.
+- Progreso actualizado por HTTP cada dos segundos además de SSE, sin retener el máximo anterior si 7-Zip reinicia su contador.
+- Logs JSON de servidor, operaciones, procesos, progreso y activación, con credenciales redactadas.
+- Pruebas reales de ambos motores desde ISO y BDMV, revisión de pistas y publicación, con un Blu-ray sintético incluido en el repositorio.
+
 ## 0.1.2
 
 - Progreso de extracción en directo sin esperar al siguiente redibujado y eventos SSE independientes para cada actualización.

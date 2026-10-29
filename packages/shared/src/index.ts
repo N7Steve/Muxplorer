@@ -17,7 +17,7 @@ export interface Entry {
   modified: string;
   extension: string;
 }
-export type JobKind = 'copy' | 'move' | 'delete' | 'extract' | 'remux' | 'makemkv';
+export type JobKind = 'copy' | 'move' | 'delete' | 'extract' | 'remux' | 'makemkv' | 'disc';
 export type JobStatus =
   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
 export interface Track {

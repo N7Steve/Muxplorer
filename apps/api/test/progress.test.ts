@@ -13,7 +13,7 @@ import { Files } from '../src/files';
 import { config } from '../src/config';
 import { mergeJobs } from '../../web/src/app/job-state';
 
-test('7-Zip progress is received live through backspace redraws and ignores regressions and filename percentages', async () => {
+test('7-Zip reports the latest live counter, including resets, and ignores filename percentages', async () => {
   const percentages: number[] = [];
   const progress = new SevenZipProgress((percent) => percentages.push(percent));
   const controller = new AbortController();
@@ -40,7 +40,7 @@ test('7-Zip progress is received live through backspace redraws and ignores regr
   progress.accept('Extracting movie 20%.mkv');
   progress.accept('1000% invalid');
   progress.accept('100%');
-  assert.deepEqual(percentages, [65, 98, 100]);
+  assert.deepEqual(percentages, [65, 98, 65, 98, 100]);
 });
 
 test('a late HTTP snapshot never replaces newer SSE progress or a cancelled state', () => {
@@ -155,7 +155,7 @@ test('archive completion reports validation, publication and cleanup instead of 
     );
     assert.deepEqual(
       stages.filter((s) => s.stage === 'Extrayendo con 7-Zip').map((s) => s.percent),
-      [0, 65, 98, 99],
+      [0, 65, 98, 65, 99],
     );
     assert.ok(
       stages.some((s) => s.stage === 'Validando rutas y archivos extraídos' && s.percent === null),

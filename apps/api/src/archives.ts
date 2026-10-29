@@ -8,6 +8,7 @@ import { Processes } from './process';
 import { JobContext } from './jobs';
 import { config } from './config';
 import { problem } from './errors';
+import { diagnostic } from './diagnostics';
 export interface ExtractRequest {
   source: Location;
   destination: Location;
@@ -21,7 +22,9 @@ export class SevenZipProgress {
     const match = /^\s*(\d{1,3})%(?:\s|$)/.exec(line);
     if (!match) return;
     const percent = Number(match[1]);
-    if (percent > 100 || percent <= this.latest) return;
+    // The engine may reset its counter between volumes/files. Keep its current
+    // value instead of pinning the UI forever to an earlier high-water mark.
+    if (percent > 100 || percent === this.latest || /\bScan\b/.test(line)) return;
     this.latest = percent;
     this.report(percent);
   }
@@ -62,7 +65,7 @@ export class Archives {
     if (request.folder) safeName(request.folder);
     const staging = await this.files.staging(request.destination, context.id);
     const password = request.password ?? '';
-    const options = { signal: context.signal, secrets: [password] };
+    const options = { signal: context.signal, secrets: [password], jobId: context.id };
     const run = (args: string[], extra: Parameters<Processes['run']>[2] = {}) =>
       this.processes.run(config.SANDBOX_BIN, [staging, config.SEVENZIP_BIN, ...args], {
         ...options,
@@ -83,10 +86,19 @@ export class Archives {
           context.update('Finalizando la extracción con 7-Zip');
         else context.update(stage, ((phase + percent / 100) / phases) * 100);
       });
+      let sampledAt = 0;
       await run(
         ['x', '-y', '-aos', '-bsp1', '-bso1', `-p${password}`, `-o${output}`, '--', archive],
         {
           onLine: (line) => {
+            if (/^\s*\d{1,3}%/.test(line) && Date.now() - sampledAt >= 5000) {
+              diagnostic('archive.engine_progress', {
+                jobId: context.id,
+                phase,
+                line: line.slice(0, 200),
+              });
+              sampledAt = Date.now();
+            }
             progress.accept(line);
           },
         },

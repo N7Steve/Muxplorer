@@ -57,7 +57,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.2 .`, exporta con `docker save -o muxplorer-0.1.2.tar muxplorer:0.1.2`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.2` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.3 .`, exporta con `docker save -o muxplorer-0.1.3.tar muxplorer:0.1.3`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.3` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -74,13 +74,29 @@ En TrueNAS prepara las ACL para que esa identidad pueda listar, leer, crear, ren
 
 Un volumen nuevo de `/config` se inicializa desde la imagen con propietario 1000:1000. Si eliges otro UID, prepara ese volumen con el propietario/ACL adecuados antes de arrancar. También puedes sustituir únicamente el volumen de configuración por un dataset de aplicaciones con ACL preparadas. No cambies permisos del árbol multimedia como parte de la instalación.
 
+## ISO y BDMV: dos motores
+
+El menú contextual de una ISO o `BDMV/index.bdmv` ofrece **Abrir con MKVToolNix** y **Abrir con MakeMKV**. Ambos generan un temporal, solicitan revisión de las pistas reales y publican el resultado mediante el mismo remux verificado.
+
+La imagen instala MKVToolNix 103.0 desde el paquete oficial verificado por SHA-256, incluido el lector de capítulos MPLS que no estaba disponible en el paquete 74.0 de Debian. MKVToolNix usa las listas MPLS de un Blu-ray descifrado. Para una ISO, 7-Zip abre su estructura dentro de un temporal privado junto al archivo de origen, confinado con Landlock; esto requiere escritura y espacio libre en el origen además del destino. El análisis y la conversión abren la ISO por separado y limpian sus temporales al terminar. No requiere montajes, privilegios, licencia ni recodificación. Los DVD se muestran por conjunto VTS (no se reconstruye toda su navegación de menús); el contenido cifrado necesita MakeMKV o una copia descifrada.
+
 ## MakeMKV integrado
 
-MakeMKV 2.0.0 se instala automáticamente en la misma imagen, con sus bibliotecas y permisos de ejecución para el usuario del contenedor. Está habilitado desde el primer arranque: no hay que crear otra imagen, definir variables de aceptación ni confirmar una pantalla adicional. La construcción y las pruebas ejecutan el motor como usuario sin privilegios para detectar errores de instalación antes de publicar.
+MakeMKV 1.18.4 se instala automáticamente en la misma imagen, con sus bibliotecas y permisos de ejecución para el usuario del contenedor. Está habilitado desde el primer arranque: no hay que crear otra imagen, definir variables de aceptación ni confirmar una pantalla adicional. La construcción y las pruebas ejecutan el motor como usuario sin privilegios para detectar errores de instalación antes de publicar.
 
-La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings.conf`, conservando los ajustes existentes. El valor `app_DefaultSelectionString = "+sel:all"` permite conservar las pistas durante la extracción y revisarlas después. Si el motor solicita iniciar la evaluación o indica que ha caducado, se obtiene la clave beta vigente del anuncio oficial de MakeMKV y se repite el análisis una sola vez. Requiere conexión HTTPS a `forum.makemkv.com`; no incorpora una clave fija ni modifica licencias personales. Si no se puede activar, muestra una explicación para configurar `app_Key` en ese mismo archivo. El análisis del origen muestra los mensajes del motor cuando una operación no puede completarse.
+Se fija 1.18.4 porque 2.0.0 presenta una regresión al abrir Blu-ray desde ISO/carpeta en Linux, reproducida con fixtures y [reportada en el foro oficial](https://forum.makemkv.com/forum/viewtopic.php?t=42565). Los paquetes binario y OSS corresponden a la misma versión y se verifican por SHA-256.
+
+La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings.conf`, conservando los ajustes existentes. El valor `app_DefaultSelectionString = "+sel:all"` permite conservar las pistas durante la extracción y revisarlas después. Si el motor solicita iniciar la evaluación, indica que ha caducado o exige registrar una versión antigua, se obtiene la clave beta vigente del anuncio oficial de MakeMKV y se repite el análisis una sola vez. Requiere conexión HTTPS a `forum.makemkv.com`; no incorpora una clave fija ni modifica licencias personales. Si no se puede activar, muestra una explicación para configurar `app_Key` en ese mismo archivo. El análisis del origen muestra los mensajes del motor cuando una operación no puede completarse.
 
 Los binarios originales se obtienen de la [distribución oficial para Linux](https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224), con hashes SHA-256 verificados. Las bibliotecas OSS se compilan sin escritorio y se conservan los avisos y licencias originales en la imagen. Interfaces empleadas: [modo robot de MakeMKV](https://www.makemkv.com/developers/usage.txt) y [mkvmerge](https://mkvtoolnix.download/doc/mkvmerge.html).
+
+## Logs en TrueNAS
+
+Los registros salen por stdout/stderr del contenedor y se consultan en **Apps → Muxplorer → Logs** (o `docker logs <contenedor>`). Cada registro de diagnóstico ocupa una línea JSON con fecha UTC y nombre del evento. `server.ready` identifica la versión y Node; `job.queued`, `job.started`, `job.progress`, `job.result` y `job.finished` incluyen `jobId`; `process.start`, `process.running` (cada 15 segundos) y `process.exit` incluyen `processId`, duración, código y señal de salida. El progreso se registra por cambio de etapa, cada cinco puntos o cada 15 segundos; `archive.engine_progress` muestrea la consola de 7-Zip cada cinco segundos.
+
+También se registran conexión/desconexión SSE, peticiones de escritura (ruta y estado, sin cuerpo), cancelaciones y pasos de activación de MakeMKV. No se imprimen argumentos completos, credenciales ni claves de licencia. Las rutas y nombres de los archivos sí aparecen para diagnosticar cada operación. Los logs dependen de la retención configurada en TrueNAS/Docker; no se duplican en `/config`.
+
+El navegador sincroniza operaciones por HTTP cada dos segundos además de SSE y conserva el orden de las revisiones. La cabecera SSE desactiva el buffering en proxies compatibles. El porcentaje refleja el contador actual del motor, incluso si este retrocede entre archivos o volúmenes; no se conserva artificialmente su máximo anterior.
 
 ## Integridad, temporales y reinicios
 
@@ -145,7 +161,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.2 .
+docker build -t muxplorer:0.1.3 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance
@@ -153,9 +169,9 @@ pnpm test:acceptance
 
 `test:docker` crea un contenedor desechable con **dos tmpfs aislados** para fixtures. Verifica autenticación, CSRF, traversal/symlinks, operaciones de archivos, conflictos, extracción real ZIP/RAR/7z protegido/7z multipartes/tar.gz, remux con varias fuentes, nombres Unicode, selección de pistas y flags, SSE, historial después de reiniciar, UID sin root y healthcheck. Genera archivos pequeños y un RAR sin compresión válido; además se ha comprobado localmente la extracción de un RAR multivolumen de 256 MiB repartido en 17 partes; no accede al NAS. El contenedor se elimina al terminar. `MUXPLORER_KEEP_TEST_CONTAINER=true` permite retenerlo para depuración, con credenciales de prueba mostradas en la salida; no lo uses con datos reales.
 
-`test:acceptance` añade seis pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
+`test:acceptance` añade ocho pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
 
-La prueba del pipeline MakeMKV usa procesos simulados: comprueba checkpoint, IDs reales del MKV generado, revisión obligatoria y publicación tras remux. **No se ha validado una extracción completa de una ISO/BDMV real con MakeMKV activado.** Esa validación requiere una fuente de prueba y el origen multimedia correspondiente.
+La prueba unitaria del pipeline verifica checkpoint, IDs del MKV generado y revisión obligatoria. Las pruebas Docker convierten además un Blu-ray sintético descifrado de 125 segundos desde ISO y BDMV con ambos motores, incluyendo activación beta de MakeMKV, revisión y remux final. No se han validado discos comerciales protegidos ni todas las variantes de Blu-ray.
 
 ## Problemas frecuentes y límites del MVP
 

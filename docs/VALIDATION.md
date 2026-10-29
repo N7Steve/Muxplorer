@@ -4,15 +4,15 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 | Comprobación                                            | Resultado                                                                                              |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                             | 39 pruebas correctas                                                                                   |
+| `pnpm test`                                             | 40 pruebas correctas                                                                                   |
 | `pnpm lint`                                             | Sin errores ni advertencias                                                                            |
 | `pnpm typecheck`                                        | API y plantillas Angular correctas                                                                     |
 | `pnpm format:check`                                     | Correcto                                                                                               |
 | `pnpm build`                                            | NestJS y Angular compilados; frontend inicial aproximadamente 385 KB, 100 KB de transferencia estimada |
-| `docker build -t muxplorer:0.1.2 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
-| `pnpm test:acceptance`                                  | Smoke Docker y seis pruebas de navegador correctas                                                     |
+| `docker build -t muxplorer:0.1.3 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
+| `pnpm test:acceptance`                                  | Smoke Docker y ocho pruebas de navegador correctas                                                     |
 | Ambos YAML mediante `docker compose ... config --quiet` | Correctos                                                                                              |
-| `docker compose up --build -d`                          | Aplicación arrancada en 8098 y healthcheck healthy                                                     |
+| Healthcheck del contenedor de pruebas                   | Estado healthy tras ejecutar operaciones y reiniciar el contenedor                                     |
 
 ## Correcciones 0.1.2
 
@@ -31,15 +31,17 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 - Copia de un archivo sparse cancelada: estado cancelado, origen conservado y ausencia de publicación parcial.
 - Reinicio con copia activa: estado interrumpido, sin finalización falsa ni reintento automático.
 - Extracción real de un RAR multivolumen generado como fixture: 256 MiB en 17 partes. Se verificó que 7-Zip puede finalizar sin emitir 100%, y que sus porcentajes se actualizan con retrocesos de consola.
-- Progreso de 7-Zip con redibujados por retroceso, rechazo de porcentajes atrasados, snapshots HTTP posteriores a eventos SSE, etapas finales explícitas y cancelación sin porcentaje obsoleto.
+- Progreso de 7-Zip con redibujados por retroceso, seguimiento del contador actual incluso tras reinicios, snapshots HTTP posteriores a eventos SSE, etapas finales explícitas y cancelación sin porcentaje obsoleto.
 - Desde el navegador: crear/renombrar/eliminar carpeta, menús contextuales multimedia, añadir subtítulos mediante selector, crear MKV y comprobar resultado en el otro panel, extraer mediante diálogo, multiselección, arrastrar entre paneles con elección explícita y layout móvil sin desbordamiento horizontal.
 
 Las capturas inspeccionadas están en `test-results/visual/`: explorador, remux, extracción y móvil. Se regeneran con `pnpm test:acceptance`; no son pantallas estáticas del producto.
 
-## Alcance de las pruebas de MakeMKV
+## Motores de disco en 0.1.3
 
-Se verifican con fixtures/mocks el parser robot, los prefijos ISO/BDMV, la construcción del flujo, el checkpoint persistente, la revisión obligatoria de IDs del MKV generado, el remux final y la publicación/limpieza. La imagen contiene MakeMKV 2.0.0, sus bibliotecas compiladas y el EULA íntegro. Desde 0.1.1 se verifica que MakeMKV es ejecutable como UID 1000 y aparece disponible automáticamente, sin una pantalla de aceptación.
+Se verifican ISO y BDMV con un Blu-ray sintético de 125 segundos (AVC + AC3), tanto en MKVToolNix como en MakeMKV 1.18.4. Cada variante se analiza, extrae, espera la revisión obligatoria, remultiplexa y publica; se comprueba el número de pistas revisadas y la limpieza de temporales de ISO. Los fixtures están en `tests/fixtures/disc.zip` y su origen está documentado en esa carpeta.
 
-**No se ha validado la conversión completa de una ISO/BDMV real con MakeMKV activado.** Tampoco se han verificado discos protegidos, archivos de 100 GB ni permisos/ACL/ZFS del NAS. Estos puntos requieren validación adicional en el entorno correspondiente. El README recoge estas limitaciones y los pasos de despliegue.
+La regresión de MakeMKV 2.0.0 se reprodujo al abrir la carpeta/ISO en un contenedor desechable (SIGSEGV). Con 1.18.4, sus bibliotecas y datos de la misma versión, se comprueba activación beta tras código 253 y conversión completa del fixture. Los tests unitarios cubren recuperación tras salida 139 y protección de licencias personales.
 
-La validación se realiza localmente y no requiere publicar imágenes en registros externos.
+El navegador prueba las dos opciones del menú y la actualización 98 → 17 → 46 cuando una conexión SSE abierta no entrega datos. Se comprueba también la redacción de contraseñas y claves beta en logs correlacionados por proceso.
+
+No se han verificado discos comerciales protegidos, todas las variantes Blu-ray/DVD, archivos de 100 GB ni permisos/ACL/ZFS del NAS. No se ha reproducido con el archivo concreto del NAS el 98% retenido; los logs y la sincronización HTTP permiten contrastar su contador real con la pantalla.

@@ -4,11 +4,12 @@ import { mkdir, readdir, rm, lstat, readFile, writeFile } from 'node:fs/promises
 import type { Disc, DiscTitle, Location, RemuxRequest, TrackChoice } from '@muxplorer/shared';
 import { Paths, safeName } from './paths';
 import { Files } from './files';
-import { Processes } from './process';
+import { Processes, ProcessError } from './process';
 import { Mkv } from './mkv';
 import { JobContext, NeedsReview } from './jobs';
 import { config } from './config';
 import { problem } from './errors';
+import { diagnostic } from './diagnostics';
 export interface MakeRequest {
   source: Location;
   destination: Location;
@@ -90,10 +91,10 @@ export function makeSource(absolute: string) {
 export class MakeMkv implements OnModuleInit {
   private activation?: Promise<void>;
   constructor(
-    private readonly paths: Paths,
-    private readonly files: Files,
-    private readonly processes: Processes,
-    private readonly mkv: Mkv,
+    protected readonly paths: Paths,
+    protected readonly files: Files,
+    protected readonly processes: Processes,
+    protected readonly mkv: Mkv,
   ) {}
   async onModuleInit() {
     const folder = path.join(this.env().HOME, '.MakeMKV');
@@ -124,26 +125,43 @@ export class MakeMkv implements OnModuleInit {
   }
   async inspect(location: Location): Promise<Disc> {
     const source = await this.source(location);
-    const inspect = () =>
-      this.processes.run(config.MAKEMKV_BIN, ['-r', '--noscan', '--cache=128', 'info', source], {
-        env: this.env(),
-        timeout: 10 * 60_000,
-        captureLimit: 16 * 1024 * 1024,
-        allowedCodes: [0, 1],
-      });
+    const needsActivation = (output: string) =>
+      /^MSG:(?:5053|5021),|^MSG:\d+,[^\n]*(?:evaluation period has expired|shareware functionality unavailable)/im.test(
+        output,
+      );
+    const inspect = async () => {
+      try {
+        return await this.processes.run(
+          config.MAKEMKV_BIN,
+          ['-r', '--noscan', '--cache=128', 'info', source],
+          {
+            env: this.env(),
+            timeout: 10 * 60_000,
+            captureLimit: 16 * 1024 * 1024,
+            allowedCodes: [0, 1, 10],
+          },
+        );
+      } catch (error) {
+        // The Linux engine may crash at the unattended trial prompt. Recover from
+        // the actual robot message even when the process exits via SIGSEGV.
+        if (error instanceof ProcessError && needsActivation(error.stdout))
+          return { stdout: error.stdout, code: error.code ?? -1 };
+        throw error;
+      }
+    };
     let result = await inspect();
-    if (
-      /^MSG:5053,|^MSG:\d+,[^\n]*(?:evaluation period has expired|shareware functionality unavailable)/im.test(
-        result.stdout,
-      )
-    ) {
+    diagnostic('makemkv.inspect', { location, code: result.code });
+    if (needsActivation(result.stdout)) {
+      diagnostic('makemkv.activation_required', { code: result.code });
       this.activation ??= this.activateBeta().finally(() => {
         this.activation = undefined;
       });
       await this.activation;
       result = await inspect();
+      diagnostic('makemkv.inspect_retry', { code: result.code });
     }
     const disc = parseDisc(result.stdout);
+    diagnostic('makemkv.titles', { count: disc.titles.length, messages: disc.messages });
     if (!disc.titles.length)
       problem(
         `MakeMKV no encontró títulos. Comprueba instalación, licencia y origen. ${disc.messages.slice(-3).join(' ')}`,
@@ -157,6 +175,7 @@ export class MakeMkv implements OnModuleInit {
     if (existing && !existing.startsWith('T-'))
       problem('MakeMKV rechazó la activación. Revisa tu licencia en la configuración de MakeMKV.');
     try {
+      diagnostic('makemkv.beta_fetch');
       const response = await fetch('https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053', {
         signal: AbortSignal.timeout(15_000),
       });
@@ -166,7 +185,11 @@ export class MakeMkv implements OnModuleInit {
       if (!key) throw new Error('Clave beta no disponible');
       const updated = settings.replace(/^app_Key\s*=.*(?:\r?\n|$)/gm, '');
       await writeFile(filename, `${updated.trimEnd()}\napp_Key = "${key}"\n`, { mode: 0o600 });
-    } catch {
+      diagnostic('makemkv.beta_saved');
+    } catch (error) {
+      diagnostic('makemkv.activation_failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       problem(
         'MakeMKV necesita activación y no se pudo obtener la clave beta oficial. Comprueba la conexión a forum.makemkv.com o configura app_Key en /config/makemkv/.MakeMKV/settings.conf.',
       );
@@ -213,6 +236,7 @@ export class MakeMkv implements OnModuleInit {
             ],
             {
               env: this.env(),
+              jobId: context.id,
               signal: context.signal,
               onLine: (line) => {
                 if (line.startsWith('PRGV:')) {

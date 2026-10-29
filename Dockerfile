@@ -19,20 +19,25 @@ ARG TARGETARCH
 ARG SEVENZIP_VERSION=26.05
 ARG SEVENZIP_SHA256=22cf82fcc6eb7474f1d5bb4f02c0f8ebd573a718089d6833dc30f8350a3b232e
 RUN test "$TARGETARCH" = amd64 && curl -fL "https://github.com/ip7z/7zip/releases/download/${SEVENZIP_VERSION}/7z${SEVENZIP_VERSION%%.*}${SEVENZIP_VERSION##*.}-linux-x64.tar.xz" -o 7zip.tar.xz && echo "$SEVENZIP_SHA256  7zip.tar.xz" | sha256sum -c - && mkdir sevenzip && tar -xJf 7zip.tar.xz -C sevenzip
-ARG MAKEMKV_VERSION=2.0.0
-ARG MAKEMKV_OSS_SHA256=435316b2d219eb48c880526557addd076b5f5e6de5171424c7651f9cac95b161
-ARG MAKEMKV_BIN_SHA256=f1265e74875a186efdfbbbec7459a64e969033515e53cbc4d805f0a374f0a124
-RUN curl -fL "https://www.makemkv.com/download/makemkv-oss-${MAKEMKV_VERSION}.tar.gz" -o oss.tar.gz && echo "$MAKEMKV_OSS_SHA256  oss.tar.gz" | sha256sum -c - && curl -fL "https://www.makemkv.com/download/makemkv-bin-${MAKEMKV_VERSION}.tar.gz" -o bin.tar.gz && echo "$MAKEMKV_BIN_SHA256  bin.tar.gz" | sha256sum -c - && tar -xzf oss.tar.gz && tar -xzf bin.tar.gz
+# 2.0.0 crashes when opening Blu-ray ISOs/folders on Linux. Pin the working engine.
+ARG MAKEMKV_VERSION=1.18.4
+ARG MAKEMKV_OSS_SHA256=8590063648d42ec2a958b74573d7022f0f4c334e4e4fe7dd53b70c6e748ba453
+ARG MAKEMKV_BIN_SHA256=cee56de0baa5531abed16bd862742d308d772b4ab4dae16ee865bf74f04a1608
+RUN curl --retry 3 -fL "https://www.makemkv.com/download/old/makemkv-oss-${MAKEMKV_VERSION}.tar.gz" -o oss.tar.gz && echo "$MAKEMKV_OSS_SHA256  oss.tar.gz" | sha256sum -c - && curl --retry 3 -fL "https://www.makemkv.com/download/old/makemkv-bin-${MAKEMKV_VERSION}.tar.gz" -o bin.tar.gz && echo "$MAKEMKV_BIN_SHA256  bin.tar.gz" | sha256sum -c - && tar -xzf oss.tar.gz && tar -xzf bin.tar.gz
 RUN cd makemkv-oss-${MAKEMKV_VERSION} && ./configure --disable-gui --prefix=/usr && make -j2 && make install DESTDIR=/install
 # Repackage the unchanged Linux binary + data + EULA under the explicit Linux-package exception.
 RUN mkdir -p /install/usr/bin /install/usr/share/MakeMKV /licenses && install -m 0755 makemkv-bin-${MAKEMKV_VERSION}/bin/amd64/makemkvcon /install/usr/bin/makemkvcon && cp makemkv-bin-${MAKEMKV_VERSION}/src/share/* /install/usr/share/MakeMKV/ && cp makemkv-bin-${MAKEMKV_VERSION}/src/eula_en_linux.txt /licenses/makemkv.txt && cp makemkv-oss-${MAKEMKV_VERSION}/License.txt /licenses/makemkv-oss.txt && cp makemkv-oss-${MAKEMKV_VERSION}/mmccextr/License.txt /licenses/mmccextr.txt && cp sevenzip/License.txt /licenses/7zip.txt
 COPY docker/rename.c docker/sandbox.c ./
 RUN cc -O2 -Wall -Wextra -Werror rename.c -o /install/usr/bin/mux-rename && cc -O2 -Wall -Wextra -Werror sandbox.c -o /install/usr/bin/mux-sandbox
+ARG MKVTOOLNIX_VERSION=103.0-0~debian12bunkus01
+ARG MKVTOOLNIX_SHA256=0b5d6ad3ad129d5df1d8eb6075826430e51bf1008d6a1e0fcfab4bdc5fc1307e
+RUN curl --retry 3 -fL "https://mkvtoolnix.download/debian/pool/bookworm/main/m/mkvtoolnix/mkvtoolnix_${MKVTOOLNIX_VERSION}_amd64.deb" -o mkvtoolnix.deb && echo "$MKVTOOLNIX_SHA256  mkvtoolnix.deb" | sha256sum -c -
 
 FROM node:24-bookworm-slim AS production
 LABEL org.opencontainers.image.source="https://github.com/N7Steve/Muxplorer" \
       org.opencontainers.image.title="Muxplorer"
-RUN apt-get update && apt-get install -y --no-install-recommends mkvtoolnix ca-certificates libavcodec59 libexpat1 libssl3 zlib1g tini && rm -rf /var/lib/apt/lists/*
+COPY --from=tools /build/mkvtoolnix.deb /tmp/mkvtoolnix.deb
+RUN apt-get update && apt-get install -y --no-install-recommends /tmp/mkvtoolnix.deb ca-certificates libavcodec59 libexpat1 libssl3 zlib1g tini && rm /tmp/mkvtoolnix.deb && rm -rf /var/lib/apt/lists/*
 COPY --from=tools /install/ /
 COPY --from=tools /build/sevenzip/7zz /usr/local/bin/7zz
 COPY --from=tools /licenses/ /app/licenses/
@@ -42,7 +47,7 @@ COPY --from=build /production/ ./api/
 COPY --from=build /src/apps/web/dist/browser/ ./web/
 ENV NODE_ENV=production PORT=8098 CONFIG_DIR=/config DOWNLOADS_ROOT=/data/downloads PLEX_ROOT=/data/plex WEB_DIR=/app/web MAKEMKV_HOME=/config/makemkv TZ=Europe/Madrid LANG=C.UTF-8 LC_ALL=C.UTF-8
 USER 1000:1000
-RUN test -x /usr/bin/makemkvcon && makemkvcon -r --noscan --cache=1 info disc:9999 > /tmp/makemkv-check.txt 2>&1; result=$?; test "$result" -le 1 && grep -q 'MakeMKV v' /tmp/makemkv-check.txt && rm /tmp/makemkv-check.txt
+RUN test -x /usr/bin/makemkvcon && makemkvcon -r --noscan --cache=1 info disc:9999 > /tmp/makemkv-check.txt 2>&1; result=$?; case "$result" in 0|1|10|253) ;; *) cat /tmp/makemkv-check.txt; exit 1 ;; esac; grep -q 'MakeMKV v' /tmp/makemkv-check.txt && rm /tmp/makemkv-check.txt
 EXPOSE 8098
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/usr/bin/tini", "--"]

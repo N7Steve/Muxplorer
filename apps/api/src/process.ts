@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { randomUUID } from 'node:crypto';
+import { diagnostic } from './diagnostics';
 export interface ProcessOptions {
   signal?: AbortSignal;
   cwd?: string;
@@ -10,12 +12,14 @@ export interface ProcessOptions {
   captureLimit?: number;
   timeout?: number;
   secrets?: string[];
+  jobId?: string;
 }
 export class ProcessError extends Error {
   constructor(
     public readonly executable: string,
     public readonly code: number | null,
     detail: string,
+    public readonly stdout = '',
   ) {
     super(`${executable}: ${detail}`);
   }
@@ -28,6 +32,10 @@ export class Processes {
     options: ProcessOptions = {},
   ): Promise<{ stdout: string; code: number }> {
     options.signal?.throwIfAborted();
+    const processId = randomUUID();
+    const started = Date.now();
+    let lastOutput = started;
+    diagnostic('process.start', { processId, jobId: options.jobId, executable });
     return new Promise((resolve, reject) => {
       const child = spawn(executable, args, {
         shell: false,
@@ -60,6 +68,7 @@ export class Processes {
         }
       };
       const stop = () => {
+        diagnostic('process.stop', { processId, aborted: options.signal?.aborted, timedOut });
         kill('SIGTERM');
         killTimer ??= setTimeout(() => kill('SIGKILL'), 5000);
         killTimer.unref();
@@ -72,8 +81,20 @@ export class Processes {
         options.timeout ?? 24 * 3600_000,
       );
       timer.unref();
+      const heartbeat = setInterval(
+        () =>
+          diagnostic('process.running', {
+            processId,
+            jobId: options.jobId,
+            elapsedMs: Date.now() - started,
+            outputSilentMs: Date.now() - lastOutput,
+          }),
+        15_000,
+      );
+      heartbeat.unref();
       options.signal?.addEventListener('abort', stop, { once: true });
       child.stdout.on('data', (chunk: Buffer) => {
+        lastOutput = Date.now();
         const decoded = decoder.write(chunk);
         if (stdout.length + decoded.length <= limit) stdout += decoded;
         else if (!options.onLine) {
@@ -109,20 +130,35 @@ export class Processes {
         }
       });
       child.stderr.on('data', (chunk: Buffer) => {
+        lastOutput = Date.now();
         stderr = (stderr + chunk.toString('utf8')).slice(-32_768);
       });
       const cleanup = () => {
         clearTimeout(timer);
+        clearInterval(heartbeat);
         if (killTimer) clearTimeout(killTimer);
         options.signal?.removeEventListener('abort', stop);
       };
       child.on('error', (error) => {
         cleanup();
+        diagnostic('process.spawn_error', { processId, error: sanitize(error.message) });
         reject(new ProcessError(executable, null, sanitize(error.message)));
       });
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
         if (options.signal?.aborted || timedOut || overflow || callbackError) kill('SIGKILL');
         cleanup();
+        diagnostic('process.exit', {
+          processId,
+          jobId: options.jobId,
+          executable,
+          code,
+          signal,
+          elapsedMs: Date.now() - started,
+          aborted: options.signal?.aborted ?? false,
+          timedOut,
+          overflow,
+          ...(code !== 0 ? { detail: sanitize((stderr || stdout).slice(-2000)) } : {}),
+        });
         const finalText = decoder.end();
         stdout += finalText;
         pending += finalText;
@@ -151,6 +187,7 @@ export class Processes {
                 : overflow
                   ? 'Salida del proceso demasiado grande.'
                   : sanitize((stderr || stdout).slice(-8000)) || `Código de salida ${code}`,
+              sanitize(stdout),
             ),
           );
           return;

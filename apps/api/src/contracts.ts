@@ -35,7 +35,7 @@ export const make = z
   .object({
     source: location,
     destination: location,
-    titles: z.array(z.number().int().min(0).max(9999)).min(1).max(100),
+    titles: z.array(z.number().int().min(0).max(99999)).min(1).max(100),
     name: z.string().min(1).max(220),
   })
   .strict();
