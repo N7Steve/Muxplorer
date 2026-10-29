@@ -3,7 +3,7 @@
 ## 0.1.5
 
 - Revisión de pistas por grupos plegables de vídeo, audio y subtítulos, con tipografía mayor y sin repetir el archivo de origen en cada fila.
-- Borrado de todos los nombres de pista desde el pie de la modal, banderas de idioma y logos de códec del skin Kodi Aeon Nox SiLVO. Nombre del códec arriba y logo con canales debajo, sin número de pista visible.
+- Borrado de todos los nombres de pista desde el pie de la modal, banderas de idioma y logos de códec del skin Kodi Aeon Nox SiLVO. Códec y canales en la primera columna, logo en una columna independiente de hasta 80 px antes del nombre de pista, sin número de pista visible.
 - Extensión `.mkv` automática en los campos de salida de revisión y remux; eliminados los avisos redundantes de la modal.
 - Inicio manual sin límite de tareas simultáneas; eliminado el bloqueo al pulsar Empezar con dos trabajos activos.
 - Concurrencia automática sin máximo fijo y cola sin el anterior tope de 100 trabajos. La planificación no depende del límite visual del historial.

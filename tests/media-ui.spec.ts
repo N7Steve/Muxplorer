@@ -231,7 +231,8 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
   await expect(modal.getByLabel('Archivo de salida')).toHaveValue(base);
   await expect(modal.locator('.source-label')).toHaveCount(0);
   await expect(modal.locator('.track-description').first()).not.toContainText('#');
-  await expect(modal.locator('.track-codec-details .codec-flag').first()).toBeVisible();
+  await expect(modal.locator('.track-codec-logo .codec-flag').first()).toBeVisible();
+  await expect(modal.locator('.codec-flag').first()).toHaveCSS('max-width', '80px');
   await expect(
     modal
       .locator('.modal-footer')

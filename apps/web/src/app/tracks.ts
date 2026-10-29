@@ -23,8 +23,9 @@ export interface EditableTrack extends TrackChoice {
       </summary>
       <div class="track-table">
         <div class="track-header">
-          <span></span><span>Pista / códec</span><span>Nombre</span><span>Idioma</span
-          ><span title="Predeterminada">Default</span><span title="Forzada">Forced</span>
+          <span></span><span>Pista / códec</span><span>Logo</span><span>Nombre</span
+          ><span>Idioma</span><span title="Predeterminada">Default</span
+          ><span title="Forzada">Forced</span>
         </div>
         <div cdkDropList (cdkDropListDropped)="drop($event, group.type)">
           @for (track of groupTracks(group.type); track track.source + ':' + track.id) {
@@ -41,11 +42,6 @@ export interface EditableTrack extends TrackChoice {
               <div class="track-description">
                 <b>{{ track.metadata.codec }}</b>
                 <div class="track-codec-details">
-                  @if (codecFlag(track.metadata); as flag) {
-                    <img class="codec-flag" [src]="flag" [alt]="track.metadata.codec" />
-                  } @else {
-                    <mx-icon [name]="group.icon" [size]="24" />
-                  }
                   @if (track.metadata.channels) {
                     <span>{{ track.metadata.channels }} canales</span>
                   }
@@ -53,6 +49,13 @@ export interface EditableTrack extends TrackChoice {
                     <span>{{ track.metadata.resolution }}</span>
                   }
                 </div>
+              </div>
+              <div class="track-codec-logo">
+                @if (codecFlag(track.metadata); as flag) {
+                  <img class="codec-flag" [src]="flag" [alt]="track.metadata.codec" />
+                } @else {
+                  <mx-icon [name]="group.icon" [size]="24" />
+                }
               </div>
               <input
                 [(ngModel)]="track.name"

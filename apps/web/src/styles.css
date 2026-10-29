@@ -1455,11 +1455,11 @@ input[type='checkbox'] {
 .track-header,
 .track-row {
   display: grid;
-  grid-template-columns: 45px minmax(180px, 1.2fr) minmax(90px, 1fr) 118px 52px 52px;
+  grid-template-columns: 45px 180px 80px minmax(120px, 1fr) 118px 52px 52px;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  min-width: 650px;
+  min-width: 820px;
 }
 .track-header {
   color: #a6b2ca;
@@ -1516,7 +1516,8 @@ input[type='checkbox'] {
   margin-top: 5px;
   color: #98a8bf;
 }
-.track-disabled .track-description {
+.track-disabled .track-description,
+.track-disabled .track-codec-logo {
   opacity: 0.35;
 }
 .picker-area {
@@ -2205,10 +2206,17 @@ input[type='checkbox'] {
   flex-shrink: 0;
 }
 .codec-flag {
-  width: 100px;
+  width: 80px;
+  max-width: 80px;
   height: 56px;
   object-fit: contain;
   flex-shrink: 0;
+}
+.track-codec-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 .output-name {
   display: flex;
