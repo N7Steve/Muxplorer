@@ -46,7 +46,7 @@ test('all media engines are available automatically without an extra MakeMKV set
 }) => {
   await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Muxplorer 0.1.3', { exact: false })).toBeVisible();
+  await expect(modal.getByText('Muxplorer 0.1.4', { exact: false })).toBeVisible();
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
     'Disponible',
   );
@@ -200,4 +200,104 @@ test('disc context menu offers both MKVToolNix and MakeMKV', async ({ page }) =>
   await expect(modal.getByText('Lista 00000.mpls', { exact: true })).toBeVisible();
   await expect(modal.getByText('00:02:05', { exact: true })).toBeVisible();
   await expect(modal.getByText('MKVTOOLNIX', { exact: true })).toBeVisible();
+});
+
+test('ISO preparation runs in background, reopens, edits track names and dismisses the completed operation', async ({
+  page,
+}) => {
+  const left = page.locator('mx-explorer[panelId="left"]');
+  await left.getByRole('row').filter({ hasText: 'Disc fixture' }).dblclick();
+  await left.getByRole('row').filter({ hasText: 'bluray.iso' }).click({ button: 'right' });
+  const queuedResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/disc/prepare'),
+  );
+  await page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }).click();
+  const queued = await (await queuedResponse).json();
+  await page.getByRole('button', { name: 'Continuar en segundo plano', exact: true }).click();
+  const drawer = page.getByRole('complementary', { name: 'Panel de operaciones' });
+  const card = drawer.locator(`[data-job-id="${queued.id}"]`);
+  await card.getByRole('button', { name: 'Elegir títulos', exact: true }).click({ timeout: 10000 });
+  const modal = page.getByRole('dialog');
+  await expect(drawer).toHaveCount(0);
+  await modal.locator('.disc-title input[type="checkbox"]').first().check();
+  const base = `Plex review ${Date.now()}`;
+  await modal.getByLabel('Nombre base de salida').fill(base);
+  await modal.getByRole('button', { name: 'Extraer y revisar pistas', exact: true }).click();
+  await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
+  await card.getByRole('button', { name: 'Revisar pistas', exact: true }).click({ timeout: 15000 });
+  await expect(drawer).toHaveCount(0);
+  const names = modal.getByRole('textbox', { name: 'Nombre de pista', exact: true });
+  await names.first().click();
+  await expect(names.first()).toBeFocused();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Plex video');
+  await expect(names.first()).toHaveValue('Plex video');
+  await names.nth(1).fill('Nombre que se elimina');
+  await names.nth(1).click();
+  await expect(names.nth(1)).toBeFocused();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Backspace');
+  await expect(names.nth(1)).toHaveValue('');
+  await page.screenshot({ path: 'test-results/visual/review-editable.png', fullPage: true });
+  await modal.getByRole('button', { name: 'Confirmar y crear MKV', exact: true }).click();
+  await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
+  await expect(card.locator('.job-status')).toHaveText('Completado', { timeout: 15000 });
+  const inspect = await page.request.post('/api/media/inspect', {
+    headers: { 'X-Muxplorer': '1' },
+    data: { root: 'plex', path: base + '.mkv' },
+  });
+  const media = await inspect.json();
+  expect(media.tracks[0].name).toBe('Plex video');
+  expect(media.tracks[1].name).toBe('');
+  await card.getByRole('button', { name: 'Quitar de operaciones', exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
+  await expect(card).toHaveCount(0);
+  const retained = await page.request.post('/api/media/inspect', {
+    headers: { 'X-Muxplorer': '1' },
+    data: { root: 'plex', path: base + '.mkv' },
+  });
+  expect(retained.ok()).toBeTruthy();
+});
+
+test('queued operations expose Empezar and respect the two-job limit', async ({ page }) => {
+  let started = false;
+  const stamp = '2026-10-29T10:00:00.000Z';
+  const makeJob = (id: string, status: string) => ({
+    id,
+    kind: 'extract',
+    status,
+    revision: started ? 2 : 1,
+    createdAt: stamp,
+    updatedAt: stamp,
+    progress: status === 'running' ? 15 : null,
+    stage: status === 'running' ? 'Extrayendo' : 'En cola',
+    sources: [{ root: 'downloads', path: id + '.rar' }],
+    results: [],
+    messages: [],
+  });
+  await page.route('**/api/jobs', (route) =>
+    route.fulfill({
+      json: [
+        makeJob('active', 'running'),
+        makeJob('requested', started ? 'running' : 'pending'),
+        makeJob('waiting', 'pending'),
+      ],
+    }),
+  );
+  await page.route('**/api/jobs/requested/start', async (route) => {
+    started = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
+  const drawer = page.getByRole('complementary', { name: 'Panel de operaciones' });
+  const requested = drawer.locator('[data-job-id="requested"]');
+  await expect(requested.getByRole('button', { name: 'Empezar', exact: true })).toBeEnabled();
+  await requested.getByRole('button', { name: 'Empezar', exact: true }).click();
+  await expect(requested.getByText('En ejecución', { exact: true })).toBeVisible();
+  await expect(
+    drawer.locator('[data-job-id="waiting"]').getByRole('button', { name: 'Empezar', exact: true }),
+  ).toBeDisabled();
 });

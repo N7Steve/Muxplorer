@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.1.4
+
+- Preparación de ISO/BDMV con MKVToolNix en la cola de operaciones, con progreso, cancelación y reapertura para elegir títulos.
+- La preparación ISO se conserva y reutiliza al crear los MKV para evitar una segunda extracción completa.
+- Botón Empezar para ejecutar manualmente una segunda tarea, respetando un máximo de dos activas.
+- Revisión de pistas editable con teclado: corregido el manejador del fondo del diálogo que impedía enfocar los campos, además de evitar controles de foco simultáneos.
+- Tipografía más grande y textos de pistas con mayor contraste.
+- Icono para retirar operaciones terminadas de la lista, con limpieza de temporales y conservación del resultado y del historial.
+
 ## 0.1.3
 
 - Dos opciones para ISO/BDMV: MKVToolNix 103.0 sobre fuentes descifradas (con capítulos MPLS) y MakeMKV.

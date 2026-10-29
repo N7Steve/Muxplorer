@@ -22,7 +22,7 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   background: var(--bg);
 }
@@ -99,7 +99,7 @@ p {
   line-height: 1.65;
 }
 small {
-  font-size: 11px;
+  font-size: 12px;
 }
 img {
   display: block;
@@ -132,7 +132,7 @@ kbd {
   color: var(--muted);
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.17em;
   font-weight: 650;
   color: var(--muted);
@@ -150,7 +150,7 @@ kbd {
   color: var(--accent);
 }
 .version {
-  font-size: 8px;
+  font-size: 11px;
   border: 1px solid #393149;
   background: #211d30;
   color: #bba9fa;
@@ -166,7 +166,7 @@ kbd {
   gap: 8px;
   border-radius: 7px;
   padding: 10px 15px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -198,7 +198,7 @@ kbd {
 .button.compact {
   padding: 7px 10px;
   min-height: 31px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .button.danger {
   background: #b54552;
@@ -264,7 +264,7 @@ kbd {
   display: flex;
   gap: 8px;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .topbar-actions {
@@ -284,14 +284,14 @@ kbd {
   width: 29px;
   height: 29px;
   color: #b9a8ee;
-  font-size: 11px;
+  font-size: 12px;
 }
 .count {
   background: #39304f;
   color: #c4b4ff;
   padding: 1px 6px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 11px;
 }
 .workspace {
   display: flex;
@@ -308,7 +308,7 @@ kbd {
   background: #11151d;
 }
 .section-label {
-  font-size: 9px;
+  font-size: 11px;
   color: #666f83;
   letter-spacing: 0.13em;
   font-weight: 600;
@@ -323,7 +323,7 @@ kbd {
   width: 100%;
   border-radius: 7px;
   color: #919aad;
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 4px;
 }
 .side-link.selected {
@@ -343,7 +343,7 @@ kbd {
 .subtle-count {
   margin-left: auto;
   color: #c5b4ff;
-  font-size: 10px;
+  font-size: 11px;
 }
 .storage-label {
   margin-top: 37px;
@@ -369,12 +369,12 @@ kbd {
 }
 .storage-card b {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
 }
 .storage-card small {
   color: #707b91;
-  font-size: 10px;
+  font-size: 11px;
   display: block;
   margin-top: 5px;
 }
@@ -398,13 +398,13 @@ kbd {
   border-radius: 8px;
 }
 .local-note b {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 550;
   margin-left: 6px;
   color: #a0bdaf;
 }
 .local-note p {
-  font-size: 10px;
+  font-size: 11px;
   color: #768a85;
   line-height: 1.7;
   margin-top: 6px;
@@ -415,7 +415,7 @@ kbd {
   color: #8c95a8;
   align-items: center;
   width: 100%;
-  font-size: 10px;
+  font-size: 11px;
   margin: 22px 0;
 }
 .side-help mx-icon:last-child {
@@ -423,7 +423,7 @@ kbd {
 }
 .sidebar-version {
   display: block;
-  font-size: 8px;
+  font-size: 11px;
   color: #4f5a71;
   letter-spacing: 0.1em;
 }
@@ -444,10 +444,10 @@ kbd {
 .page-heading .eyebrow {
   color: #74698d;
   margin-bottom: 9px;
-  font-size: 8px;
+  font-size: 11px;
 }
 .page-heading p {
-  font-size: 11px;
+  font-size: 12px;
   color: #737e95;
   margin-top: 8px;
 }
@@ -459,7 +459,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 9px;
+  font-size: 11px;
   background: #131922;
 }
 .heading-tag mx-icon {
@@ -484,7 +484,7 @@ kbd {
   margin: 0 9px;
 }
 .selection-hint {
-  font-size: 9px;
+  font-size: 11px;
   color: #606b82;
 }
 .panels {
@@ -548,7 +548,7 @@ kbd {
   background: transparent;
   border: 0;
   color: #d6dbea;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding-right: 17px;
@@ -563,7 +563,7 @@ kbd {
   pointer-events: none;
 }
 .panel-caption {
-  font-size: 7px;
+  font-size: 11px;
   color: #4e5a74;
   letter-spacing: 0.13em;
   margin-left: auto;
@@ -599,7 +599,7 @@ kbd {
   gap: 3px;
   overflow: auto;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   scrollbar-width: none;
 }
 .breadcrumbs button {
@@ -638,7 +638,7 @@ kbd {
   border: 0 !important;
   background: transparent !important;
   color: #bcc4d8;
-  font-size: 10px !important;
+  font-size: 11px !important;
   padding: 0 !important;
   height: 28px;
   width: 100%;
@@ -648,7 +648,7 @@ kbd {
   color: #5f6a80;
 }
 .search kbd {
-  font-size: 9px;
+  font-size: 11px;
   color: #525e75;
   background: transparent;
   border-color: #252d3b;
@@ -668,7 +668,7 @@ kbd {
   background: #151a24;
 }
 .file-header button {
-  font-size: 9px;
+  font-size: 11px;
   color: #6b7891;
   text-align: left;
   padding: 0;
@@ -694,7 +694,7 @@ kbd {
   border-bottom: 1px solid #20263255;
   padding: 0 17px 0 15px;
   cursor: default;
-  font-size: 10px;
+  font-size: 11px;
   position: relative;
   user-select: none;
 }
@@ -746,7 +746,7 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #b7bfd1;
-  font-size: 12px;
+  font-size: 13px;
 }
 .file-row.selected .name-text {
   color: #e0d9ef;
@@ -758,15 +758,15 @@ kbd {
 .file-size {
   text-align: right;
   color: #8a95ab;
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .file-type {
-  font-size: 9px;
+  font-size: 11px;
   color: #5f6d85;
 }
 .file-date {
-  font-size: 9px;
+  font-size: 11px;
   color: #6d7a93;
   font-variant-numeric: tabular-nums;
 }
@@ -781,7 +781,7 @@ kbd {
   justify-content: space-between;
   align-items: center;
   padding: 0 14px;
-  font-size: 8px;
+  font-size: 11px;
   color: #69758e;
   background: #141923;
 }
@@ -794,7 +794,7 @@ kbd {
   justify-content: space-between;
   align-items: center;
   height: 40px;
-  font-size: 8px;
+  font-size: 11px;
   color: #4f5d76;
   gap: 10px;
   flex-shrink: 0;
@@ -805,7 +805,7 @@ kbd {
   gap: 6px;
 }
 .workspace-footer kbd {
-  font-size: 7px;
+  font-size: 11px;
   border-color: #232a38;
   color: #647189;
   background: #141924;
@@ -830,7 +830,7 @@ kbd {
   color: #b2bace;
 }
 .state-box p {
-  font-size: 11px;
+  font-size: 12px;
   max-width: 280px;
 }
 .empty-icon {
@@ -858,12 +858,12 @@ kbd {
   border-radius: 8px;
   color: #e0d5fa;
   box-shadow: 0 10px 40px #0008;
-  font-size: 12px;
+  font-size: 13px;
   max-width: 360px;
 }
 .drag-preview span {
   color: #a898c5;
-  font-size: 9px;
+  font-size: 11px;
 }
 .cdk-drag-placeholder {
   opacity: 0.3;
@@ -892,13 +892,13 @@ kbd {
 }
 .floating-job b {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
   color: #d4c5f5;
 }
 .floating-job small {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   color: #9787ad;
   margin-top: 5px;
   max-width: 240px;
@@ -945,7 +945,7 @@ kbd {
   margin-top: 7px;
 }
 .drawer-description {
-  font-size: 11px;
+  font-size: 12px;
   color: #7a879e;
   padding: 0 25px 24px;
 }
@@ -958,7 +958,7 @@ kbd {
   padding: 17px 24px;
   border-top: 1px solid var(--line);
   color: #6e7c93;
-  font-size: 9px;
+  font-size: 11px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -989,18 +989,18 @@ kbd {
   height: 33px;
 }
 .job-title b {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   display: block;
 }
 .job-title small {
   color: #6e7c92;
-  font-size: 9px;
+  font-size: 11px;
   display: block;
   margin-top: 4px;
 }
 .job-status {
-  font-size: 8px;
+  font-size: 11px;
   border-radius: 4px;
   padding: 4px 6px;
   background: #2b263b;
@@ -1021,7 +1021,7 @@ kbd {
   color: #c0a175;
 }
 .job-source {
-  font-size: 12px;
+  font-size: 13px;
   color: #bdc5d6;
   margin: 17px 0 14px;
   overflow: hidden;
@@ -1032,12 +1032,12 @@ kbd {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 10px;
+  font-size: 11px;
   color: #939cb1;
   line-height: 1.6;
 }
 .job-stage b {
-  font-size: 9px;
+  font-size: 11px;
   color: #b9a5ec;
 }
 .progress {
@@ -1065,7 +1065,7 @@ kbd {
   }
 }
 .job-error {
-  font-size: 10px;
+  font-size: 11px;
   color: #e59ba3;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1078,7 +1078,7 @@ kbd {
   align-items: center;
   gap: 6px;
   color: #64738d;
-  font-size: 9px;
+  font-size: 11px;
   margin: 10px 0;
   overflow-wrap: anywhere;
 }
@@ -1092,13 +1092,13 @@ kbd {
   border-top: 1px solid #2d3444;
   margin-top: 12px;
   padding-top: 12px;
-  font-size: 9px;
+  font-size: 11px;
   color: #8996ad;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .job-details code {
-  font-size: 8px;
+  font-size: 11px;
   color: #63728b;
 }
 .job-details p {
@@ -1130,7 +1130,7 @@ kbd {
   gap: 9px;
   width: 100%;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 9px 10px;
   color: #bec6d8;
   text-align: left;
@@ -1148,12 +1148,12 @@ kbd {
   margin-left: auto;
   background: transparent;
   border: 0;
-  font-size: 8px;
+  font-size: 11px;
   color: #68748b;
 }
 .menu-label {
   padding: 8px 11px;
-  font-size: 8px;
+  font-size: 11px;
   color: #68758e;
   letter-spacing: 0.03em;
 }
@@ -1208,7 +1208,7 @@ kbd {
   min-height: 0;
 }
 .modal-body > .muted {
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 20px;
 }
 .modal-footer {
@@ -1227,14 +1227,14 @@ kbd {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 8px;
+  font-size: 11px;
   max-width: 180px;
   line-height: 1.6;
 }
 .modal-body label:not(.checkbox-label):not(.title-check) {
   display: block;
   color: #a1adc4;
-  font-size: 11px;
+  font-size: 12px;
   margin: 0 0 17px;
 }
 .modal-body input:not([type='checkbox']),
@@ -1247,7 +1247,7 @@ kbd {
   color: #d6ddef;
   border-radius: 6px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 13px;
   min-height: 38px;
 }
 .modal-body input::placeholder {
@@ -1264,12 +1264,12 @@ input[type='checkbox'] {
   flex-shrink: 0;
 }
 .field-help {
-  font-size: 10px;
+  font-size: 11px;
   color: #66758d;
   margin: -8px 0 18px;
 }
 .optional {
-  font-size: 9px;
+  font-size: 11px;
   color: #627089;
   margin-left: 5px;
 }
@@ -1286,14 +1286,14 @@ input[type='checkbox'] {
 }
 .source-card b {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: #cbd1e0;
   font-weight: 550;
   overflow-wrap: anywhere;
 }
 .source-card small {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   color: #717c98;
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -1303,7 +1303,7 @@ input[type='checkbox'] {
   align-items: center;
   gap: 9px;
   color: #acb6cc;
-  font-size: 11px;
+  font-size: 12px;
   margin-bottom: 17px;
 }
 .destination-label {
@@ -1320,7 +1320,7 @@ input[type='checkbox'] {
   align-items: center;
   gap: 12px;
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
   color: #bcabd9;
 }
 .destination-card span {
@@ -1329,7 +1329,7 @@ input[type='checkbox'] {
 }
 .destination-card b {
   font-weight: 400;
-  font-size: 9px;
+  font-size: 11px;
   margin-left: auto;
   color: #a18abd;
 }
@@ -1346,7 +1346,7 @@ input[type='checkbox'] {
   background: #30232c;
   padding: 14px;
   border-radius: 7px;
-  font-size: 11px;
+  font-size: 12px;
   color: #dda7b0;
   line-height: 1.7;
   margin-bottom: 20px;
@@ -1355,7 +1355,7 @@ input[type='checkbox'] {
   font-weight: 550;
 }
 .warning-banner p {
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 4px;
   color: #ad8b94;
 }
@@ -1363,7 +1363,7 @@ input[type='checkbox'] {
   border-color: #32374d;
   background: #212639;
   color: #919fbc;
-  font-size: 10px;
+  font-size: 11px;
   margin: 16px 0 0;
 }
 .selection-list {
@@ -1382,7 +1382,7 @@ input[type='checkbox'] {
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid #232b3a;
-  font-size: 11px;
+  font-size: 12px;
   color: #a8b4ca;
   overflow-wrap: anywhere;
 }
@@ -1410,7 +1410,7 @@ input[type='checkbox'] {
   gap: 8px;
   width: 50%;
   padding: 11px;
-  font-size: 12px;
+  font-size: 13px;
   color: #7a88a1;
   border-radius: 5px;
 }
@@ -1438,7 +1438,7 @@ input[type='checkbox'] {
   border: 1px solid #373246;
   background: #252032;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 11px;
   color: #b09bcd;
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -1462,8 +1462,8 @@ input[type='checkbox'] {
   min-width: 650px;
 }
 .track-header {
-  color: #737f97;
-  font-size: 9px;
+  color: #a6b2ca;
+  font-size: 11px;
   background: #1c2230;
   border-bottom: 1px solid #31394d;
 }
@@ -1479,7 +1479,7 @@ input[type='checkbox'] {
 }
 .track-row input:not([type='checkbox']) {
   margin-top: 0;
-  font-size: 10px;
+  font-size: 11px;
   padding: 8px 9px;
   min-height: 34px;
 }
@@ -1503,7 +1503,7 @@ input[type='checkbox'] {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: #b5c3d8;
 }
@@ -1512,13 +1512,13 @@ input[type='checkbox'] {
 }
 .track-description small {
   display: block;
-  font-size: 8px;
+  font-size: 11px;
   margin-top: 5px;
-  color: #6a7c96;
+  color: #98a8bf;
 }
 .track-description .source-label {
-  font-size: 7px;
-  color: #625875;
+  font-size: 11px;
+  color: #a2a0b5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1542,7 +1542,7 @@ input[type='checkbox'] {
   background: #242033;
 }
 .picker-heading b {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: #b3a0cb;
 }
@@ -1598,7 +1598,7 @@ input[type='checkbox'] {
   justify-content: space-between;
   border-top: 1px solid #3d3652;
   padding: 9px 12px;
-  font-size: 9px;
+  font-size: 11px;
   color: #8b819e;
   gap: 10px;
 }
@@ -1608,7 +1608,7 @@ input[type='checkbox'] {
   align-items: center;
   gap: 9px;
   color: #bba2df;
-  font-size: 11px;
+  font-size: 12px;
 }
 .inline-error {
   margin-top: 20px;
@@ -1621,7 +1621,7 @@ input[type='checkbox'] {
   background: #38252d;
   border-radius: 7px;
   color: #eca0ac;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1648,7 +1648,7 @@ input[type='checkbox'] {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: #c1c9db;
 }
 .title-check b {
@@ -1657,13 +1657,13 @@ input[type='checkbox'] {
 .title-check span {
   margin-left: auto;
   color: #6e6482;
-  font-size: 10px;
+  font-size: 11px;
 }
 .disc-metadata {
   display: flex;
   gap: 12px;
   margin: 14px 0 12px 24px;
-  font-size: 10px;
+  font-size: 11px;
   color: #9684ad;
 }
 .disc-streams {
@@ -1672,16 +1672,16 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 6px;
   color: #78849d;
-  font-size: 9px;
+  font-size: 11px;
 }
 .properties dt {
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 20px;
   color: #c9d1e0;
   overflow-wrap: anywhere;
 }
 .properties dd {
-  font-size: 11px;
+  font-size: 12px;
   color: #7889a4;
   margin: 8px 0 0;
   overflow-wrap: anywhere;
@@ -1707,12 +1707,12 @@ input[type='checkbox'] {
   border: 0;
 }
 .tool-item b {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .tool-item small {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   color: #71849e;
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -1721,13 +1721,13 @@ input[type='checkbox'] {
 .tool-item > span:last-child {
   margin-left: auto;
   color: #8a97ad;
-  font-size: 9px;
+  font-size: 11px;
 }
 .shortcut-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
-  font-size: 11px;
+  font-size: 12px;
   color: #8e9db6;
 }
 .shortcut-list dd {
@@ -1750,7 +1750,7 @@ input[type='checkbox'] {
   padding: 10px 10px 10px 16px;
   color: #a9d4bc;
   max-width: calc(100vw - 40px);
-  font-size: 12px;
+  font-size: 13px;
   animation: appear 0.15s ease-out;
 }
 .toast.error {
@@ -1792,7 +1792,7 @@ input[type='checkbox'] {
   margin-bottom: 55px;
 }
 .login-card .eyebrow {
-  font-size: 9px;
+  font-size: 11px;
   color: #a28bbd;
   margin-bottom: 12px;
 }
@@ -1801,7 +1801,7 @@ input[type='checkbox'] {
   max-width: 370px;
 }
 .login-card > .muted {
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 14px;
   margin-bottom: 32px;
   max-width: 350px;
@@ -1809,7 +1809,7 @@ input[type='checkbox'] {
 }
 .login-card label {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: #99a3ba;
   margin-bottom: 21px;
 }
@@ -1818,7 +1818,7 @@ input[type='checkbox'] {
   height: 44px;
   background: #151a26;
   border-color: #353249;
-  font-size: 12px;
+  font-size: 13px;
 }
 .login-submit {
   width: 100%;
@@ -1830,7 +1830,7 @@ input[type='checkbox'] {
   justify-content: center;
   gap: 7px;
   align-items: center;
-  font-size: 9px;
+  font-size: 11px;
   color: #66788c;
   margin-top: 27px;
 }
@@ -1838,7 +1838,7 @@ input[type='checkbox'] {
   position: absolute;
   bottom: 25px;
   color: #424e66;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.15em;
 }
 .boot {
@@ -1864,21 +1864,21 @@ input[type='checkbox'] {
     grid-template-columns: minmax(170px, 1fr) 82px 63px 120px;
   }
   .file-row {
-    font-size: 12px;
+    font-size: 13px;
     min-height: 47px;
   }
   .file-size,
   .file-date {
-    font-size: 10px;
+    font-size: 11px;
   }
   .file-type {
-    font-size: 9px;
+    font-size: 11px;
   }
   .name-text {
-    font-size: 12px;
+    font-size: 13px;
   }
   .file-header button {
-    font-size: 10px;
+    font-size: 11px;
   }
   .main-area {
     padding: 36px 34px 0;
@@ -1913,7 +1913,7 @@ input[type='checkbox'] {
     display: none;
   }
   .workspace-footer > span:last-child {
-    font-size: 7px;
+    font-size: 11px;
   }
   .panel-caption {
     display: none;
@@ -2011,7 +2011,7 @@ input[type='checkbox'] {
     gap: 8px;
   }
   .operations-toggle {
-    font-size: 11px;
+    font-size: 12px;
   }
   .disc-titles {
     grid-template-columns: 1fr;
@@ -2043,7 +2043,7 @@ input[type='checkbox'] {
     gap: 5px;
   }
   .count {
-    font-size: 9px;
+    font-size: 11px;
   }
   .main-area {
     padding: 22px 12px 0;
@@ -2055,10 +2055,10 @@ input[type='checkbox'] {
     font-size: 24px;
   }
   .page-heading .eyebrow {
-    font-size: 7px;
+    font-size: 11px;
   }
   .page-heading p {
-    font-size: 10px;
+    font-size: 11px;
   }
   .actionbar {
     margin-bottom: 12px;
@@ -2082,7 +2082,7 @@ input[type='checkbox'] {
     display: block;
   }
   .workspace-footer {
-    font-size: 7px;
+    font-size: 11px;
   }
   .jobs-drawer {
     top: 58px;
@@ -2112,7 +2112,7 @@ input[type='checkbox'] {
     padding: 14px 17px;
   }
   .modal-footer .button {
-    font-size: 10px;
+    font-size: 11px;
     padding: 9px 11px;
     gap: 5px;
   }
@@ -2130,12 +2130,12 @@ input[type='checkbox'] {
   }
   .toast {
     bottom: 15px;
-    font-size: 11px;
+    font-size: 12px;
     width: calc(100vw - 25px);
   }
   .shortcut-list {
     gap: 16px;
-    font-size: 10px;
+    font-size: 11px;
   }
   .login-card .brand.large {
     margin-bottom: 40px;
@@ -2149,4 +2149,14 @@ input[type='checkbox'] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+.analysis-status {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #31394d;
+  border-radius: 8px;
+}
+.analysis-status .progress {
+  margin-top: 10px;
 }

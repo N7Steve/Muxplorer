@@ -6,7 +6,8 @@ import os from 'node:os';
 import { Files } from '../src/files';
 import { Paths } from '../src/paths';
 import { Processes } from '../src/process';
-import { Jobs, NeedsReview, JobContext } from '../src/jobs';
+import { Jobs, NeedsReview, NeedsDiscSelection, JobContext } from '../src/jobs';
+import { config } from '../src/config';
 import { Store } from '../src/store';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const context = (): JobContext => ({
@@ -182,4 +183,92 @@ test('process diagnostics correlate exits and redact passwords and beta keys', a
   assert.ok(!logs.join('').includes('TOPSECRET'));
   assert.ok(!logs.join('').includes(beta));
   assert.ok(end.detail.includes('[oculto]'));
+});
+
+test('manual start runs a queued job beside an active job, limits concurrency and persists dismissal', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mux-queue-'));
+  const store = new Store(directory),
+    jobs = new Jobs(store);
+  const previous = config.JOB_CONCURRENCY;
+  config.JOB_CONCURRENCY = 1;
+  const releases = new Map<string, () => void>();
+  const until = async (condition: () => boolean) => {
+    for (let i = 0; i < 100 && !condition(); i++) await sleep(5);
+    assert.ok(condition());
+  };
+  try {
+    jobs.register('copy', async (_payload, ctx) => {
+      await new Promise<void>((resolve) => {
+        releases.set(ctx.id, resolve);
+        ctx.signal.addEventListener('abort', resolve, { once: true });
+      });
+      ctx.result({ root: 'plex', path: ctx.id + '.mkv' });
+    });
+    const first = jobs.enqueue('copy', {}, []),
+      second = jobs.enqueue('copy', {}, []),
+      third = jobs.enqueue('copy', {}, []);
+    await until(() => jobs.get(first.id).status === 'running');
+    assert.equal(jobs.get(second.id).status, 'pending');
+    assert.throws(() => jobs.dismiss(first.id), /Termina o cancela/);
+    jobs.start(second.id);
+    assert.equal(jobs.get(second.id).status, 'running');
+    assert.throws(() => jobs.start(third.id), /dos trabajos/);
+    releases.get(first.id)!();
+    await until(() => jobs.get(first.id).status === 'completed');
+    assert.equal(jobs.get(third.id).status, 'pending');
+    const original = jobs.get(first.id).results;
+    jobs.dismiss(first.id);
+    assert.equal(jobs.get(first.id).dismissed, true);
+    assert.deepEqual(jobs.get(first.id).results, original);
+    releases.get(second.id)!();
+    await until(() => jobs.get(third.id).status === 'running');
+    releases.get(third.id)!();
+    await until(() => jobs.get(third.id).status === 'completed');
+    await jobs.onModuleDestroy();
+    const restarted = new Jobs(store);
+    assert.equal(restarted.get(first.id).dismissed, true);
+    await restarted.onModuleDestroy();
+  } finally {
+    await jobs.onModuleDestroy();
+    config.JOB_CONCURRENCY = previous;
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('prepared disc selection survives restart, waits for a decision and resumes the same job', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mux-disc-ready-'));
+  const store = new Store(directory),
+    jobs = new Jobs(store);
+  try {
+    jobs.register('disc', async (_payload, ctx) => {
+      ctx.checkpoint({ prepared: true });
+      throw new NeedsDiscSelection({
+        location: { root: 'downloads', path: 'disc.iso' },
+        titles: [],
+        messages: [],
+      });
+    });
+    const job = jobs.enqueue('disc', {}, [{ root: 'downloads', path: 'disc.iso' }]);
+    for (let i = 0; i < 100 && !jobs.get(job.id).awaitingDisc; i++) await sleep(5);
+    assert.ok(jobs.get(job.id).awaitingDisc);
+    assert.throws(() => jobs.start(job.id), /esperan en la cola/);
+    await jobs.onModuleDestroy();
+    const restarted = new Jobs(store);
+    assert.equal(restarted.get(job.id).status, 'interrupted');
+    assert.ok(restarted.get(job.id).awaitingDisc);
+    restarted.register('disc', async (payload) =>
+      assert.deepEqual(payload, { prepared: true, selected: true }),
+    );
+    restarted.resumeDisc(job.id, { prepared: true, selected: true }, { root: 'plex', path: '' });
+    for (let i = 0; i < 100 && restarted.get(job.id).status !== 'completed'; i++) await sleep(5);
+    assert.equal(restarted.get(job.id).status, 'completed');
+    assert.equal(restarted.get(job.id).awaitingDisc, undefined);
+    assert.deepEqual(restarted.get(job.id).destination, { root: 'plex', path: '' });
+    await restarted.onModuleDestroy();
+  } finally {
+    await jobs.onModuleDestroy();
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -71,6 +71,19 @@ export class AppComponent {
   readonly tracks = signal<EditableTrack[]>([]);
   readonly disc = signal<Disc | null>(null);
   readonly discEngine = signal<'makemkv' | 'disc'>('makemkv');
+  readonly discPreparationId = signal<string | null>(null);
+  readonly preparation = computed(() =>
+    this.api.jobs().find((job) => job.id === this.discPreparationId()),
+  );
+  readonly discContent = computed(() =>
+    this.discEngine() === 'disc' && this.discPreparationId()
+      ? (this.preparation()?.awaitingDisc ?? null)
+      : this.disc(),
+  );
+  readonly visibleJobs = computed(() => this.api.jobs().filter((job) => !job.dismissed));
+  readonly runningCount = computed(
+    () => this.api.jobs().filter((job) => job.status === 'running').length,
+  );
   readonly selectedTitles = signal<Set<number>>(new Set());
   readonly reviewJob = signal<Job | null>(null);
   readonly reviewFiles = signal<{ index: number; name: string; tracks: EditableTrack[] }[]>([]);
@@ -270,6 +283,17 @@ export class AppComponent {
       this.selectedTitles.set(new Set());
       this.name = action.entries[0].name.replace(/\.[^.]+$/, '') || 'pelicula';
       this.dialog.set('disc');
+      this.discPreparationId.set(null);
+      if (this.discEngine() === 'disc') {
+        try {
+          const job = await this.api.request<Job>('disc/prepare', action.entries[0].location);
+          this.discPreparationId.set(job.id);
+          await this.api.syncJobs();
+        } catch (error) {
+          this.error.set(this.message(error));
+        }
+        return;
+      }
       this.busy.set(true);
       try {
         this.disc.set(
@@ -325,6 +349,9 @@ export class AppComponent {
     this.picking.set(null);
     this.error.set('');
     this.archivePassword = '';
+  }
+  backdrop(event: MouseEvent) {
+    if (event.target === event.currentTarget) this.close();
   }
   private choices(tracks: EditableTrack[]): TrackChoice[] {
     return tracks.map((track) => ({
@@ -390,12 +417,19 @@ export class AppComponent {
           break;
         }
         case 'disc':
-          await this.api.request(`${this.discEngine()}/convert`, {
-            source: sources[0],
-            destination: this.destination(),
-            titles: [...this.selectedTitles()],
-            name: this.name,
-          });
+          if (this.discEngine() === 'disc' && this.discPreparationId()) {
+            await this.api.request(`jobs/${this.discPreparationId()}/disc-selection`, {
+              destination: this.destination(),
+              titles: [...this.selectedTitles()],
+              name: this.name,
+            });
+          } else
+            await this.api.request(`${this.discEngine()}/convert`, {
+              source: sources[0],
+              destination: this.destination(),
+              titles: [...this.selectedTitles()],
+              name: this.name,
+            });
           message = 'Disco añadido. Podrás revisar las pistas tras la extracción.';
           break;
         case 'review':
@@ -430,6 +464,7 @@ export class AppComponent {
     });
   }
   review(job: Job) {
+    this.jobsOpen.set(false);
     this.reviewJob.set(job);
     this.reviewFiles.set(
       (job.awaitingReview ?? []).map((f) => ({
@@ -439,6 +474,42 @@ export class AppComponent {
     );
     this.error.set('');
     this.dialog.set('review');
+  }
+  openDisc(job: Job) {
+    this.jobsOpen.set(false);
+    this.discEngine.set('disc');
+    this.discPreparationId.set(job.id);
+    this.disc.set(null);
+    this.currentAction.set({ action: 'disc-mkvtoolnix', entries: [], location: job.sources[0] });
+    this.selectedTitles.set(new Set());
+    this.name = job.sources[0].path
+      .split('/')
+      .pop()!
+      .replace(/\.[^.]+$/, '');
+    this.destination.set(this.otherPanel()?.location() ?? { root: 'plex', path: '' });
+    this.error.set('');
+    this.dialog.set('disc');
+  }
+  async start(job: Job) {
+    try {
+      await this.api.request(`jobs/${job.id}/start`, {});
+      await this.api.syncJobs();
+    } catch (error) {
+      this.api.toast(error);
+    }
+  }
+  async dismiss(job: Job) {
+    try {
+      await this.api.request(`jobs/${job.id}/dismiss`, {});
+      await this.api.syncJobs();
+    } catch (error) {
+      this.api.toast(error);
+    }
+  }
+  async cancelPreparation() {
+    const job = this.preparation();
+    if (job && ['pending', 'running', 'interrupted'].includes(job.status)) await this.cancel(job);
+    this.close();
   }
   async cancel(job: Job) {
     try {

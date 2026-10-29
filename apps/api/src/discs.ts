@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { readdir, mkdir, rm } from 'node:fs/promises';
+import { readdir, mkdir, rm, stat } from 'node:fs/promises';
 import type { Disc, DiscTitle, Location, Track } from '@muxplorer/shared';
 import { MakeMkv, MakeRequest } from './makemkv';
 import { Paths } from './paths';
 import { Files } from './files';
 import { Processes } from './process';
 import { Mkv, parseMkv } from './mkv';
-import { JobContext } from './jobs';
+import { JobContext, NeedsDiscSelection } from './jobs';
 import { config } from './config';
 import { validateArchiveListing, SevenZipProgress } from './archives';
 import { problem } from './errors';
@@ -18,6 +18,10 @@ interface TitleSource {
   title: DiscTitle;
   input: string;
   tracks: Track[];
+}
+export interface DiscRequest extends MakeRequest {
+  prepare?: boolean;
+  prepared?: { location: Location; stamp: string };
 }
 
 @Injectable()
@@ -33,6 +37,7 @@ export class Discs extends MakeMkv {
     location: Location,
     run: (root: string) => Promise<T>,
     context?: JobContext,
+    retainForSelection = false,
   ): Promise<T> {
     const absolute = await this.paths.file(location);
     if (!/\.iso$/i.test(absolute)) {
@@ -46,7 +51,11 @@ export class Discs extends MakeMkv {
       return run(root);
     }
     const parent: Location = { ...location, path: location.path.split('/').slice(0, -1).join('/') };
-    const staging = await this.files.staging(parent, randomUUID());
+    const staging = await this.files.staging(
+      parent,
+      retainForSelection && context ? `${context.id}-iso` : randomUUID(),
+    );
+    let retained = false;
     try {
       const options = { signal: context?.signal, jobId: context?.id };
       const list = await this.processes.run(
@@ -67,12 +76,16 @@ export class Discs extends MakeMkv {
       );
       await this.paths.tree(staging);
       return await run(staging);
+    } catch (error) {
+      retained =
+        retainForSelection && error instanceof NeedsDiscSelection && !context?.signal.aborted;
+      throw error;
     } finally {
-      await rm(staging, { recursive: true, force: true });
+      if (!retained) await rm(staging, { recursive: true, force: true });
     }
   }
 
-  private async titles(root: string): Promise<TitleSource[]> {
+  private async titles(root: string, context?: JobContext): Promise<TitleSource[]> {
     const entries = await readdir(root);
     // Decrypted backups can retain AACS metadata; its presence alone does not
     // prove that the streams are still encrypted.
@@ -107,8 +120,12 @@ export class Discs extends MakeMkv {
     }
     const result: TitleSource[] = [];
     for (const { id, input, name } of inputs) {
+      context?.signal.throwIfAborted();
+      context?.update(`Analizando títulos con MKVToolNix · ${result.length + 1}/${inputs.length}`);
       const { stdout } = await this.processes.run(config.MKVMERGE_BIN, ['-J', input], {
         timeout: 120_000,
+        signal: context?.signal,
+        jobId: context?.id,
       });
       const media = parseMkv(stdout);
       const data = JSON.parse(stdout) as {
@@ -153,50 +170,108 @@ export class Discs extends MakeMkv {
     }));
   }
 
-  override async convert(request: MakeRequest, context: JobContext) {
+  private async stamp(source: Location) {
+    const file = await stat(await this.paths.file(source));
+    return `${file.size}:${file.mtimeMs}`;
+  }
+  async cleanupPreparation(source: Location, id: string) {
+    if (/\.iso$/i.test(source.path))
+      await this.files.cleanup(
+        { ...source, path: source.path.split('/').slice(0, -1).join('/') },
+        `${id}-iso`,
+      );
+  }
+
+  override async convert(request: DiscRequest, context: JobContext) {
+    if (request.prepare) {
+      const stamp = await this.stamp(request.source);
+      return this.withSource(
+        request.source,
+        async (root) => {
+          const titles = await this.titles(root, context);
+          context.signal.throwIfAborted();
+          request.prepared = {
+            stamp,
+            location: {
+              ...request.source,
+              path: /\.iso$/i.test(request.source.path)
+                ? [
+                    ...request.source.path.split('/').slice(0, -1),
+                    `.muxplorer-${context.id}-iso`,
+                  ].join('/')
+                : request.source.path.split('/').slice(0, -2).join('/'),
+            },
+          };
+          context.checkpoint(request);
+          throw new NeedsDiscSelection({
+            location: request.source,
+            titles: titles.map((t) => t.title),
+            messages: ['Preparación completada. Se reutilizará para crear los MKV.'],
+          });
+        },
+        context,
+        true,
+      );
+    }
     if (!request.checkpoint) {
       const staging = await this.files.staging(request.destination, context.id);
       try {
         const generated: NonNullable<MakeRequest['checkpoint']>['files'] = [];
-        await this.withSource(
-          request.source,
-          async (root) => {
-            const titles = await this.titles(root);
-            for (const id of request.titles) {
-              context.signal.throwIfAborted();
-              const source = titles.find((t) => t.title.id === id);
-              if (!source) problem('El título elegido ya no está disponible.');
-              const relative = `title-${id}/title.mkv`;
-              await mkdir(path.dirname(path.join(staging, relative)));
-              await this.mkv.runAbsolute(
-                {
-                  sources: [request.source],
-                  destination: request.destination,
-                  name: 'title.mkv',
-                  title: request.name,
-                  tracks: source.tracks.map((t) => ({
-                    source: 0,
-                    id: t.id,
-                    enabled: true,
-                    name: t.name,
-                    language: t.language,
-                    default: t.default,
-                    forced: t.forced,
-                  })),
-                },
-                [source.input],
-                path.join(staging, relative),
-                context,
-              );
-              generated.push({
-                title: id,
-                relative,
-                name: `${request.name.replace(/\.mkv$/i, '')}${request.titles.length > 1 ? `-t${id}` : ''}.mkv`,
-              });
-            }
-          },
-          context,
-        );
+        const generate = async (root: string) => {
+          const titles = await this.titles(root, context);
+          for (const id of request.titles) {
+            context.signal.throwIfAborted();
+            const source = titles.find((t) => t.title.id === id);
+            if (!source) problem('El título elegido ya no está disponible.');
+            const relative = `title-${id}/title.mkv`;
+            await mkdir(path.dirname(path.join(staging, relative)));
+            await this.mkv.runAbsolute(
+              {
+                sources: [request.source],
+                destination: request.destination,
+                name: 'title.mkv',
+                title: request.name,
+                tracks: source.tracks.map((t) => ({
+                  source: 0,
+                  id: t.id,
+                  enabled: true,
+                  name: t.name,
+                  language: t.language,
+                  default: t.default,
+                  forced: t.forced,
+                })),
+              },
+              [source.input],
+              path.join(staging, relative),
+              context,
+            );
+            generated.push({
+              title: id,
+              relative,
+              name: `${request.name.replace(/\.mkv$/i, '')}${request.titles.length > 1 ? `-t${id}` : ''}.mkv`,
+            });
+          }
+        };
+        if (request.prepared) {
+          if ((await this.stamp(request.source)) !== request.prepared.stamp)
+            problem('El origen cambió después del análisis. Abre el disco de nuevo.');
+          const root = /\.iso$/i.test(request.source.path)
+            ? path.join(
+                await this.paths.directory({
+                  ...request.source,
+                  path: request.source.path.split('/').slice(0, -1).join('/'),
+                }),
+                `.muxplorer-${context.id}-iso`,
+              )
+            : await this.paths.directory(request.prepared.location);
+          await this.paths.tree(root);
+          try {
+            await generate(root);
+          } finally {
+            await this.cleanupPreparation(request.source, context.id);
+          }
+          delete request.prepared;
+        } else await this.withSource(request.source, generate, context);
         request.checkpoint = { files: generated };
         context.checkpoint(request);
       } catch (error) {

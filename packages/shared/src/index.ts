@@ -92,6 +92,8 @@ export interface Job {
   results: Location[];
   error?: string;
   awaitingReview?: ReviewFile[];
+  awaitingDisc?: Disc;
+  dismissed?: boolean;
 }
 export interface ToolStatus {
   available: boolean;

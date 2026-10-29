@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Subject } from 'rxjs';
-import type { Job, JobKind, Location, ReviewFile } from '@muxplorer/shared';
+import type { Disc, Job, JobKind, Location, ReviewFile } from '@muxplorer/shared';
 import { Store } from './store';
 import { config } from './config';
 import { errorText, problem } from './errors';
@@ -17,6 +17,11 @@ export interface JobContext {
 export class NeedsReview extends Error {
   constructor(readonly files: ReviewFile[]) {
     super('Revisa las pistas reales extraídas antes de publicar.');
+  }
+}
+export class NeedsDiscSelection extends Error {
+  constructor(readonly disc: Disc) {
+    super('Análisis listo. Elige los títulos para crear el MKV.');
   }
 }
 type Handler = (payload: unknown, context: JobContext) => Promise<void>;
@@ -113,6 +118,8 @@ export class Jobs implements OnModuleDestroy {
       return;
     }
     if (job.status === 'pending' || job.status === 'interrupted') {
+      delete job.awaitingDisc;
+      delete job.awaitingReview;
       job.status = 'cancelled';
       job.progress = null;
       delete job.error;
@@ -132,19 +139,60 @@ export class Jobs implements OnModuleDestroy {
     queueMicrotask(() => this.drain());
     return job;
   }
+  resumeDisc(id: string, payload: unknown, destination: Location) {
+    const job = this.get(id);
+    if (!job.awaitingDisc || !['pending', 'interrupted'].includes(job.status))
+      problem('Este análisis no está pendiente de elegir títulos.');
+    delete job.awaitingDisc;
+    job.status = 'pending';
+    job.destination = destination;
+    job.stage = 'Títulos confirmados';
+    job.progress = null;
+    this.save(job, payload);
+    queueMicrotask(() => this.drain());
+    return job;
+  }
+  start(id: string) {
+    const job = this.get(id);
+    if (job.status !== 'pending' || job.awaitingReview || job.awaitingDisc)
+      problem('Solo se pueden empezar trabajos que esperan en la cola.');
+    if (this.running.size >= 2)
+      problem('Ya hay dos trabajos en ejecución. Espera a que termine uno.');
+    diagnostic('job.start_requested', { jobId: id });
+    this.drain(id);
+    return this.get(id);
+  }
+  dismiss(id: string) {
+    const job = this.get(id);
+    if (!['completed', 'failed', 'cancelled'].includes(job.status))
+      problem('Termina o cancela el trabajo antes de retirarlo de la lista.');
+    job.dismissed = true;
+    this.save(job);
+    diagnostic('job.dismissed', { jobId: id });
+    return job;
+  }
   markCleaned(id: string) {
     const job = this.get(id);
     if (job.status === 'running' || job.status === 'pending')
       problem('Cancela el trabajo antes de limpiar.');
     delete job.awaitingReview;
+    delete job.awaitingDisc;
     job.messages.push('Temporales limpiados por el administrador.');
     this.save(job);
   }
-  private drain() {
+  private drain(forcedId?: string) {
     if (this.stopped) return;
-    for (const job of this.list().reverse()) {
-      if (this.running.size >= config.JOB_CONCURRENCY) break;
-      if (job.status !== 'pending' || job.awaitingReview || this.running.has(job.id)) continue;
+    const queued = this.list().reverse();
+    if (forcedId) queued.sort((a, b) => Number(b.id === forcedId) - Number(a.id === forcedId));
+    for (const job of queued) {
+      if (this.running.size >= (job.id === forcedId ? 2 : config.JOB_CONCURRENCY)) continue;
+      if (
+        job.status !== 'pending' ||
+        job.awaitingReview ||
+        job.awaitingDisc ||
+        this.running.has(job.id)
+      )
+        continue;
       const handler = this.handlers.get(job.kind);
       if (!handler) continue;
       const controller = new AbortController();
@@ -196,7 +244,12 @@ export class Jobs implements OnModuleDestroy {
           job.progress = 100;
         })
         .catch((error: unknown) => {
-          if (error instanceof NeedsReview) {
+          if (error instanceof NeedsDiscSelection && !controller.signal.aborted) {
+            job.status = 'pending';
+            job.awaitingDisc = error.disc;
+            job.stage = error.message;
+            job.progress = 100;
+          } else if (error instanceof NeedsReview) {
             job.status = 'pending';
             job.awaitingReview = error.files;
             job.stage = error.message;

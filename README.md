@@ -29,7 +29,7 @@ docker compose down
 - El menú contextual de archivos comprimidos permite extraer aquí, en una nueva carpeta o en una ubicación elegida, con contraseña opcional. Inicia RAR multipartes desde su primer volumen y conserva todas las partes en la misma carpeta; lo mismo para `.7z.001`.
 - MKVToolNix inspecciona las pistas reales. Activa, desactiva, reordena, cambia nombres, idioma BCP 47, default/forced y título. Añade varias fuentes de audio/subtítulos existentes mediante el selector. Cada fuente mantiene su propio espacio de IDs; no se concatenan archivos. La salida siempre es un MKV nuevo.
 - MakeMKV analiza una ISO o `BDMV/index.bdmv`, muestra títulos, duración, capítulos, tamaño y streams disponibles. Selecciona uno o más títulos. Tras extraerlos, el trabajo solicita **revisión de las pistas reales generadas**. Confirma la selección definitiva para ejecutar un remux adicional y publicar los resultados. No se emparejan IDs del disco y MKV por heurísticas.
-- El panel Operaciones muestra etapas, progreso disponible, mensajes, resultados y errores. Puedes navegar mientras trabaja, cancelar, revisar MakeMKV o abrir el destino. El historial visible muestra los últimos 500 trabajos; SQLite conserva los registros anteriores.
+- El panel Operaciones muestra etapas, progreso disponible, mensajes, resultados y errores. **Empezar** permite iniciar una tarea en cola junto a la activa, hasta dos simultáneas. Los análisis preparados ofrecen **Elegir títulos** y los MKV temporales **Revisar pistas**. El icono **Quitar de operaciones** retira una tarea completada, fallida o cancelada, limpia sus temporales y conserva sus resultados y registro en SQLite. Puedes navegar mientras trabaja, cancelar, revisar MakeMKV o abrir el destino. El historial visible muestra los últimos 500 trabajos; SQLite conserva los registros anteriores.
 
 ## Despliegue en TrueNAS SCALE
 
@@ -57,7 +57,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.3 .`, exporta con `docker save -o muxplorer-0.1.3.tar muxplorer:0.1.3`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.3` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.4 .`, exporta con `docker save -o muxplorer-0.1.4.tar muxplorer:0.1.4`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.4` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -78,7 +78,7 @@ Un volumen nuevo de `/config` se inicializa desde la imagen con propietario 1000
 
 El menú contextual de una ISO o `BDMV/index.bdmv` ofrece **Abrir con MKVToolNix** y **Abrir con MakeMKV**. Ambos generan un temporal, solicitan revisión de las pistas reales y publican el resultado mediante el mismo remux verificado.
 
-La imagen instala MKVToolNix 103.0 desde el paquete oficial verificado por SHA-256, incluido el lector de capítulos MPLS que no estaba disponible en el paquete 74.0 de Debian. MKVToolNix usa las listas MPLS de un Blu-ray descifrado. Para una ISO, 7-Zip abre su estructura dentro de un temporal privado junto al archivo de origen, confinado con Landlock; esto requiere escritura y espacio libre en el origen además del destino. El análisis y la conversión abren la ISO por separado y limpian sus temporales al terminar. No requiere montajes, privilegios, licencia ni recodificación. Los DVD se muestran por conjunto VTS (no se reconstruye toda su navegación de menús); el contenido cifrado necesita MakeMKV o una copia descifrada.
+La imagen instala MKVToolNix 103.0 desde el paquete oficial verificado por SHA-256, incluido el lector de capítulos MPLS que no estaba disponible en el paquete 74.0 de Debian. MKVToolNix usa las listas MPLS de un Blu-ray descifrado. Para una ISO, 7-Zip abre su estructura dentro de un temporal privado junto al archivo de origen, confinado con Landlock; esto requiere escritura y espacio libre en el origen además del destino. Al abrir desde la interfaz se crea una operación de preparación con progreso y cancelación. Puedes dejarla en segundo plano y volver desde **Elegir títulos** en Operaciones. La ISO se extrae una sola vez: el contenido privado se conserva mientras eliges los títulos y se reutiliza al crear los MKV; se elimina al terminar esa fase o al cancelar. La primera preparación sigue copiando el contenido de la ISO y su duración depende del tamaño y del almacenamiento. No es una lectura instantánea como la de MakeMKV. No requiere montajes, privilegios, licencia ni recodificación. Los DVD se muestran por conjunto VTS (no se reconstruye toda su navegación de menús); el contenido cifrado necesita MakeMKV o una copia descifrada.
 
 ## MakeMKV integrado
 
@@ -107,9 +107,9 @@ El navegador sincroniza operaciones por HTTP cada dos segundos además de SSE y 
 - 7-Zip se ejecuta confinado con **Landlock**, con permiso de escritura únicamente en el temporal. Se validan rutas antes y árbol después; los enlaces y nombres duplicados se rechazan. En un kernel sin aislamiento compatible la extracción falla de forma explícita. No se activa un fallback inseguro. ZIP/7z/RAR usan el motor oficial; tar.gz/tgz/tar.xz se descomprimen en dos etapas.
 - Los originales del remux y MakeMKV se conservan. La salida se inspecciona con MKVToolNix y se comprueba su número de pistas antes de publicarla.
 - Una selección de varios archivos/títulos puede completar algunos antes de fallar en otro. Los resultados publicados aparecen en el trabajo; no se revierten automáticamente.
-- Reiniciar marca trabajos pendientes o en ejecución como **interrumpidos**. No se reintentan automáticamente. Un checkpoint de MakeMKV que ya estaba esperando revisión puede revisarse explícitamente tras el reinicio. El resto debe volver a iniciarse después de inspeccionar el destino. Los temporales retenidos se limpian desde Detalles del trabajo una vez cancelado/interrumpido.
+- Reiniciar marca trabajos pendientes o en ejecución como **interrumpidos**. No se reintentan automáticamente. Un checkpoint de MakeMKV que ya estaba esperando revisión puede revisarse explícitamente tras el reinicio. Un análisis MKVToolNix que ya había terminado de preparar el disco conserva la elección de títulos y el contenido privado; puede continuarse explícitamente desde Operaciones. El resto debe volver a iniciarse después de inspeccionar el destino. Los temporales retenidos se limpian desde Detalles del trabajo una vez cancelado/interrumpido.
 - Cancelar una CLI envía TERM y después KILL a su grupo de procesos en Linux. Copias se cancelan por streaming. La eliminación y publicación se cancelan entre elementos/etapas; un renombrado o borrado ya iniciado no se revierte.
-- Concurrencia pesada configurable 1–2, inicialmente 1. Las mutaciones de archivos están serializadas; algunas etapas de motores distintos pueden coincidir con concurrencia 2.
+- Concurrencia automática configurable 1–2, inicialmente 1; el botón Empezar permite añadir manualmente una segunda operación sin superar dos activas. Las mutaciones de archivos están serializadas; algunas etapas de motores distintos pueden coincidir con concurrencia 2.
 
 Los datasets se consideran almacenamiento de confianza compartido con tus aplicaciones. Evita que otro proceso cambie simultáneamente los padres de una ruta o modifique un origen en uso. Las comprobaciones de rutas no sustituyen aislamiento frente a un usuario local hostil con permisos de modificación sobre los mismos directorios. No se han probado ACL/ZFS en el NAS real.
 
@@ -124,7 +124,7 @@ Los datasets se consideran almacenamiento de confianza compartido con tus aplica
 | `DOWNLOADS_PATH`, `PLEX_PATH`                 | `./.local/downloads`, `./.local/plex` | Directorios del host en desarrollo                                     |
 | `DOWNLOADS_ROOT`, `PLEX_ROOT`                 | `/data/downloads`, `/data/plex`       | Raíces internas; no cambiar en TrueNAS                                 |
 | `CONFIG_DIR`                                  | `/config`                             | SQLite, administrador y configuración persistente                      |
-| `JOB_CONCURRENCY`                             | `1`                                   | Máximo de trabajos pesados, 1–2                                        |
+| `JOB_CONCURRENCY`                             | `1`                                   | Concurrencia automática, 1–2; inicio manual limitado a dos activas     |
 | `COOKIE_SECURE`                               | `false`                               | `true` cuando se accede mediante HTTPS                                 |
 | `MAKEMKV_HOME`                                | `/config/makemkv`                     | Configuración del motor y activación                                   |
 | `SEVENZIP_BIN`, `MKVMERGE_BIN`, `MAKEMKV_BIN` | `7zz`, `mkvmerge`, `makemkvcon`       | Rutas de ejecutables para desarrollo                                   |
@@ -161,7 +161,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.3 .
+docker build -t muxplorer:0.1.4 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance
@@ -169,7 +169,7 @@ pnpm test:acceptance
 
 `test:docker` crea un contenedor desechable con **dos tmpfs aislados** para fixtures. Verifica autenticación, CSRF, traversal/symlinks, operaciones de archivos, conflictos, extracción real ZIP/RAR/7z protegido/7z multipartes/tar.gz, remux con varias fuentes, nombres Unicode, selección de pistas y flags, SSE, historial después de reiniciar, UID sin root y healthcheck. Genera archivos pequeños y un RAR sin compresión válido; además se ha comprobado localmente la extracción de un RAR multivolumen de 256 MiB repartido en 17 partes; no accede al NAS. El contenedor se elimina al terminar. `MUXPLORER_KEEP_TEST_CONTAINER=true` permite retenerlo para depuración, con credenciales de prueba mostradas en la salida; no lo uses con datos reales.
 
-`test:acceptance` añade ocho pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
+`test:acceptance` añade diez pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
 
 La prueba unitaria del pipeline verifica checkpoint, IDs del MKV generado y revisión obligatoria. Las pruebas Docker convierten además un Blu-ray sintético descifrado de 125 segundos desde ISO y BDMV con ambos motores, incluyendo activación beta de MakeMKV, revisión y remux final. No se han validado discos comerciales protegidos ni todas las variantes de Blu-ray.
 

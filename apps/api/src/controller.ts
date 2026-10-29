@@ -28,7 +28,7 @@ import { config } from './config';
 import { errorText, problem } from './errors';
 import * as contract from './contracts';
 import { diagnostic } from './diagnostics';
-import { Discs } from './discs';
+import { Discs, DiscRequest } from './discs';
 @Controller('api')
 export class PublicController {
   constructor(private readonly auth: Auth) {}
@@ -99,7 +99,7 @@ export class ApiController implements OnModuleInit {
       this.make.convert(payload as MakeRequest, context),
     );
     this.jobs.register('disc', (payload, context) =>
-      this.discs.convert(payload as MakeRequest, context),
+      this.discs.convert(payload as DiscRequest, context),
     );
   }
   @Get('roots') roots() {
@@ -152,6 +152,28 @@ export class ApiController implements OnModuleInit {
   @Post('disc/inspect') inspectDisc(@Body() body: unknown) {
     return this.discs.inspect(contract.parse(contract.location, body));
   }
+  @Post('disc/prepare') prepareDisc(@Body() body: unknown) {
+    const source = contract.parse(contract.location, body);
+    const parent = { ...source, path: source.path.split('/').slice(0, -1).join('/') };
+    return this.jobs.enqueue(
+      'disc',
+      { source, destination: parent, titles: [], name: '', prepare: true },
+      [source],
+      parent,
+    );
+  }
+  @Post('jobs/:id/disc-selection') selectDisc(@Param('id') id: string, @Body() body: unknown) {
+    const data = contract.parse(contract.make.omit({ source: true }), body);
+    const job = this.jobs.get(id);
+    if (
+      job.kind !== 'disc' ||
+      !job.awaitingDisc ||
+      data.titles.some((title) => !job.awaitingDisc!.titles.some((t) => t.id === title))
+    )
+      problem('El análisis o la selección de títulos no es válido.');
+    const payload = this.jobs.payload(id) as DiscRequest;
+    return this.jobs.resumeDisc(id, { ...payload, ...data, prepare: false }, data.destination);
+  }
   @Post('disc/convert') convertDisc(@Body() body: unknown) {
     const data = contract.parse(contract.make, body);
     return this.jobs.enqueue('disc', data, [data.source], data.destination);
@@ -179,9 +201,24 @@ export class ApiController implements OnModuleInit {
       takeWhile(() => this.auth.authenticated(req)),
     );
   }
-  @Post('jobs/:id/cancel') cancel(@Param('id') id: string) {
+  @Post('jobs/:id/cancel') async cancel(@Param('id') id: string) {
     this.jobs.cancel(id);
+    const job = this.jobs.get(id);
+    if (job.kind === 'disc' && job.status === 'cancelled')
+      await this.discs.cleanupPreparation(job.sources[0], id);
     return { ok: true };
+  }
+  @Post('jobs/:id/start') start(@Param('id') id: string) {
+    return this.jobs.start(id);
+  }
+  @Post('jobs/:id/dismiss') async dismiss(@Param('id') id: string) {
+    const job = this.jobs.get(id);
+    if (!['completed', 'failed', 'cancelled'].includes(job.status))
+      problem('Termina o cancela la operación antes de retirarla.');
+    if (job.destination) await this.files.exclusive(() => this.files.cleanup(job.destination!, id));
+    if (job.kind === 'disc') await this.discs.cleanupPreparation(job.sources[0], id);
+    this.jobs.markCleaned(id);
+    return this.jobs.dismiss(id);
   }
   @Post('jobs/:id/review') review(@Param('id') id: string, @Body() body: unknown) {
     const data = contract.parse(
@@ -218,6 +255,7 @@ export class ApiController implements OnModuleInit {
       problem('Cancela el trabajo antes de limpiar.');
     if (job.destination)
       await this.files.exclusive(() => this.files.cleanup(job.destination!, job.id));
+    if (job.kind === 'disc') await this.discs.cleanupPreparation(job.sources[0], job.id);
     this.jobs.markCleaned(id);
     return { ok: true };
   }

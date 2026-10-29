@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-docker-'));
 const name = `muxplorer-smoke-${Date.now()}`;
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.3';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.4';
 const keep = process.env.MUXPLORER_KEEP_TEST_CONTAINER === 'true';
 const password = 'Muxplorer-test-password-2026';
 const username = 'mux-admin';
@@ -317,22 +317,49 @@ try {
   docker('exec', name, '7zz', 'x', '-y', '-o/data/downloads/Disc fixture', '/tmp/disc.zip');
   for (const engine of ['disc', 'makemkv']) {
     for (const source of ['Disc fixture/BDMV/index.bdmv', 'Disc fixture/bluray.iso']) {
-      const disc = await request(`${engine}/inspect`, downloads(source), 201);
-      assert.equal(disc.titles.length, 1);
-      if (engine === 'disc') assert.equal(disc.titles[0].duration, '00:02:05');
-      if (engine === 'disc') assert.equal(disc.titles[0].streams.length, 2);
-      else assert.ok(disc.titles[0].streams.length >= 1);
       const output = `${engine}-${source.endsWith('.iso') ? 'iso' : 'bdmv'}.mkv`;
-      const queued = await request(
-        `${engine}/convert`,
-        {
-          source: downloads(source),
-          destination: plex(''),
-          titles: [disc.titles[0].id],
-          name: output,
-        },
-        201,
-      );
+      let disc, queued;
+      if (engine === 'disc') {
+        queued = await request('disc/prepare', downloads(source), 201);
+        let prepared;
+        for (let attempt = 0; attempt < 200; attempt++) {
+          prepared = (await request('jobs')).find((j) => j.id === queued.id);
+          if (prepared.awaitingDisc || prepared.status === 'failed') break;
+          await pause(100);
+        }
+        assert.ok(prepared.awaitingDisc, JSON.stringify(prepared));
+        disc = prepared.awaitingDisc;
+        if (source.endsWith('.iso'))
+          docker(
+            'exec',
+            name,
+            'test',
+            '-d',
+            `/data/downloads/Disc fixture/.muxplorer-${queued.id}-iso`,
+          );
+        await request(
+          `jobs/${queued.id}/disc-selection`,
+          { destination: plex(''), titles: [disc.titles[0].id], name: output },
+          201,
+        );
+      } else {
+        disc = await request(`${engine}/inspect`, downloads(source), 201);
+        queued = await request(
+          `${engine}/convert`,
+          {
+            source: downloads(source),
+            destination: plex(''),
+            titles: [disc.titles[0].id],
+            name: output,
+          },
+          201,
+        );
+      }
+      assert.equal(disc.titles.length, 1);
+      if (engine === 'disc') {
+        assert.equal(disc.titles[0].duration, '00:02:05');
+        assert.equal(disc.titles[0].streams.length, 2);
+      } else assert.ok(disc.titles[0].streams.length >= 1);
       let review;
       for (let attempt = 0; attempt < 200; attempt++) {
         review = (await request('jobs')).find((j) => j.id === queued.id);
@@ -340,6 +367,25 @@ try {
         await pause(100);
       }
       assert.ok(review.awaitingReview, JSON.stringify(review));
+      if (engine === 'disc' && source.endsWith('.iso')) {
+        const logs = docker('logs', name)
+          .split('\n')
+          .filter(
+            (line) => line.includes('"event":"disc.iso_extract"') && line.includes(queued.id),
+          );
+        assert.equal(logs.length, 1, 'The prepared ISO must be reused, not extracted twice');
+        assert.equal(
+          docker(
+            'exec',
+            name,
+            'node',
+            '-e',
+            `console.log(require('fs').existsSync('/data/downloads/Disc fixture/.muxplorer-${queued.id}-iso'))`,
+          ),
+          'false',
+        );
+      }
+
       assert.ok(!(await request('files?root=plex&path=')).some((e) => e.name === output));
       await request(
         `jobs/${queued.id}/review`,
@@ -387,6 +433,36 @@ try {
       e.name.startsWith('.muxplorer-'),
     ),
   );
+  const cancelledPreparation = await request(
+    'disc/prepare',
+    downloads('Disc fixture/bluray.iso'),
+    201,
+  );
+  let preparedToCancel;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    preparedToCancel = (await request('jobs')).find((j) => j.id === cancelledPreparation.id);
+    if (preparedToCancel.awaitingDisc || preparedToCancel.status === 'failed') break;
+    await pause(50);
+  }
+  assert.ok(preparedToCancel.awaitingDisc, JSON.stringify(preparedToCancel));
+  await request(`jobs/${preparedToCancel.id}/cancel`, {}, 201);
+  assert.equal(
+    (await request('jobs')).find((j) => j.id === preparedToCancel.id).status,
+    'cancelled',
+  );
+  assert.equal(
+    docker(
+      'exec',
+      name,
+      'node',
+      '-e',
+      `console.log(require('fs').existsSync('/data/downloads/Disc fixture/.muxplorer-${preparedToCancel.id}-iso'))`,
+    ),
+    'false',
+  );
+  const dismissed = await request(`jobs/${preparedToCancel.id}/dismiss`, {}, 201);
+  assert.equal(dismissed.dismissed, true);
+  docker('exec', name, 'test', '-f', '/data/downloads/Disc fixture/bluray.iso');
   const sse = await fetch(`${base}/api/jobs/events`, {
     headers: { cookie },
     signal: AbortSignal.timeout(1000),
