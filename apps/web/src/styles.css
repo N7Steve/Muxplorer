@@ -22,7 +22,7 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text);
   background: var(--bg);
 }
@@ -1455,7 +1455,7 @@ input[type='checkbox'] {
 .track-header,
 .track-row {
   display: grid;
-  grid-template-columns: 45px minmax(130px, 1.2fr) minmax(90px, 1fr) 76px 45px 45px;
+  grid-template-columns: 45px minmax(180px, 1.2fr) minmax(90px, 1fr) 118px 52px 52px;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -1463,7 +1463,7 @@ input[type='checkbox'] {
 }
 .track-header {
   color: #a6b2ca;
-  font-size: 11px;
+  font-size: 13px;
   background: #1c2230;
   border-bottom: 1px solid #31394d;
 }
@@ -1479,7 +1479,7 @@ input[type='checkbox'] {
 }
 .track-row input:not([type='checkbox']) {
   margin-top: 0;
-  font-size: 11px;
+  font-size: 13px;
   padding: 8px 9px;
   min-height: 34px;
 }
@@ -1503,7 +1503,7 @@ input[type='checkbox'] {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: #b5c3d8;
 }
@@ -1512,17 +1512,9 @@ input[type='checkbox'] {
 }
 .track-description small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 5px;
   color: #98a8bf;
-}
-.track-description .source-label {
-  font-size: 11px;
-  color: #a2a0b5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
 }
 .track-disabled .track-description {
   opacity: 0.35;
@@ -2159,4 +2151,77 @@ input[type='checkbox'] {
 }
 .analysis-status .progress {
   margin-top: 10px;
+}
+
+.track-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+.track-group {
+  margin: 16px 0;
+  border: 1px solid #31394d;
+  border-radius: 9px;
+  overflow: hidden;
+}
+.track-group summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  background: #202637;
+}
+.track-group summary span {
+  margin-left: 10px;
+  color: #a6b2ca;
+  font-size: 13px;
+  font-weight: 400;
+}
+.track-group .track-table {
+  border: 0;
+  border-radius: 0;
+}
+.track-language {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.track-language input {
+  width: 100%;
+  min-width: 0;
+}
+.language-flag {
+  width: 24px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.codec-flag {
+  width: 64px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.output-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.output-name input {
+  flex: 1;
+  min-width: 0;
+}
+.output-name > span {
+  color: #a6b2ca;
+  padding-top: 8px;
+  font-size: 14px;
+}
+.modal-body label:not(.checkbox-label):not(.title-check),
+.modal-body input:not([type='checkbox']) {
+  font-size: 14px;
+}
+.modal-footer .button {
+  font-size: 14px;
 }

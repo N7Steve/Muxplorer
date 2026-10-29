@@ -42,6 +42,9 @@ import {
   ShieldCheck,
   Film,
   CircleHelp,
+  Eraser,
+  Globe,
+  Captions,
 } from 'lucide-angular';
 const icons = {
   Folder,
@@ -85,6 +88,9 @@ const icons = {
   ShieldCheck,
   Film,
   CircleHelp,
+  Eraser,
+  Globe,
+  Captions,
 };
 @Component({
   selector: 'mx-icon',

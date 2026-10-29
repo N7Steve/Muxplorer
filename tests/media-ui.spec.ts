@@ -80,7 +80,7 @@ test('desktop explorer, multimedia context menus and exact external-track select
   await expect(modal.locator('.track-row')).toHaveCount(3);
   await modal.getByLabel('Título del MKV').fill('Prueba desde el navegador');
   const resultName = `Resultado UI ${Date.now()}.mkv`;
-  await modal.getByLabel('Archivo de salida').fill(resultName);
+  await modal.getByLabel('Archivo de salida').fill(resultName.replace(/\.mkv$/, ''));
   await modal.locator('.track-row').nth(1).getByRole('checkbox').first().uncheck();
   await page.screenshot({ path: 'test-results/visual/remux.png', fullPage: true });
   await modal.getByRole('button', { name: 'Crear MKV', exact: true }).click();
@@ -227,6 +227,29 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
   await card.getByRole('button', { name: 'Revisar pistas', exact: true }).click({ timeout: 15000 });
   await expect(drawer).toHaveCount(0);
   const names = modal.getByRole('textbox', { name: 'Nombre de pista', exact: true });
+  await expect(modal.locator('.track-group')).toHaveCount(3);
+  await expect(modal.getByLabel('Archivo de salida')).toHaveValue(base);
+  await expect(modal.locator('.source-label')).toHaveCount(0);
+  await expect(modal.getByText('Sin transferencias por el navegador')).toHaveCount(0);
+  const audioGroup = modal
+    .locator('.track-group')
+    .filter({ has: page.locator('summary', { hasText: 'Audio' }) });
+  await audioGroup.locator('summary').click();
+  await expect(audioGroup.locator('.track-row').first()).toBeHidden();
+  await audioGroup.locator('summary').click();
+  await names.first().fill('Nombre que también se elimina');
+  await names.nth(1).fill('Otro nombre');
+  await modal.getByRole('button', { name: 'Limpiar nombres de todas las pistas' }).click();
+  for (const name of await names.all()) await expect(name).toHaveValue('');
+  await modal.getByRole('textbox', { name: 'Idioma BCP 47', exact: true }).nth(1).fill('es-MX');
+  await expect(audioGroup.locator('.language-flag').first()).toHaveAttribute(
+    'src',
+    '/language-flags/mx.svg',
+  );
+  for (const img of await modal.locator('.codec-flag, .language-flag').all())
+    await expect
+      .poll(() => img.evaluate((element: HTMLImageElement) => element.naturalWidth))
+      .toBeGreaterThan(0);
   await names.first().click();
   await expect(names.first()).toBeFocused();
   await page.keyboard.press('Control+a');

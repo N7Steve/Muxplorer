@@ -4,7 +4,7 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 | Comprobación                                            | Resultado                                                                                              |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                             | 43 pruebas correctas                                                                                   |
+| `pnpm test`                                             | 45 pruebas correctas                                                                                   |
 | `pnpm lint`                                             | Sin errores ni advertencias                                                                            |
 | `pnpm typecheck`                                        | API y plantillas Angular correctas                                                                     |
 | `pnpm format:check`                                     | Correcto                                                                                               |
@@ -16,6 +16,7 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 ## Cambios 0.1.5
 
+- Modal de revisión: grupos plegables, limpieza de todos los nombres, banderas con región explícita y logos Kodi verificados en navegador. La creación real de archivos comprueba la extensión automática en remux y revisión. Pruebas de perfiles DTS-HD/Atmos/DTS:X y alias ISO de idiomas; recursos locales presentes.
 - Empezar no limita las tareas simultáneas. Se comprueban tres trabajos activos y el botón disponible con dos en ejecución.
 - JOB_CONCURRENCY admite cualquier entero positivo para la cola automática, conservando el valor predeterminado 1.
 - La cola no tiene el anterior tope de 100 trabajos; su planificación y recuperación tras reinicio se consultan por separado del historial visible de 500 registros. Se verifica iniciar un pendiente que ha quedado fuera de ese historial.

@@ -505,7 +505,11 @@
       <div class="form-grid">
         <label
           >Título del MKV<input [(ngModel)]="title" placeholder="Título de la película" /></label
-        ><label>Archivo de salida<input [(ngModel)]="name" placeholder="Pelicula.mkv" /></label>
+        ><label
+          >Archivo de salida<span class="output-name"
+            ><input [(ngModel)]="name" placeholder="Película" /><span>.mkv</span></span
+          ></label
+        >
       </div>
       <div class="info-banner">
         <mx-icon name="Info" [size]="16" />Remultiplexado sin recodificar. No cambia la calidad de
@@ -566,13 +570,16 @@
         publicación. Reserva espacio para el temporal y el resultado.
       </div>
       } @if(modal === 'review'){
-      <div class="info-banner">
-        <mx-icon name="ShieldCheck" />Estas son las pistas reales del MKV generado. Confirma qué
-        conservar; no se deducen correspondencias con el disco.
+      <div class="track-toolbar">
+        <button class="button secondary compact" (click)="clearReviewNames()">
+          <mx-icon name="Eraser" [size]="16" />Limpiar nombres de todas las pistas
+        </button>
       </div>
       @for(file of reviewFiles(); track file.index){<label
-        >Archivo de salida<input [(ngModel)]="file.name" /></label
-      ><mx-tracks [tracks]="file.tracks" />}
+        >Archivo de salida<span class="output-name"
+          ><input [(ngModel)]="file.name" /><span>.mkv</span></span
+        ></label
+      ><mx-tracks [tracks]="file.tracks" [showClear]="false" />}
       <p class="muted">Destino: {{ display(reviewJob()!.destination!) }}</p>
       } @if(modal === 'properties'){
       <dl class="properties">
@@ -670,10 +677,9 @@
       }
     </div>
     <footer class="modal-footer">
-      <span class="footer-note"
-        ><mx-icon name="LockKeyhole" [size]="13" />{{ modal === 'delete' ? 'Acción permanente' :
-        'Sin transferencias por el navegador' }}</span
-      >@if(modal === 'disc' && discEngine() === 'disc' && discPreparationId()){
+      @if(modal === 'delete'){<span class="footer-note"
+        ><mx-icon name="LockKeyhole" [size]="13" />Acción permanente</span
+      >} @if(modal === 'disc' && discEngine() === 'disc' && discPreparationId()){
       <button class="button secondary" (click)="close(); jobsOpen.set(true)">
         Continuar en segundo plano
       </button>

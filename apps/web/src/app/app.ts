@@ -271,7 +271,7 @@ export class AppComponent {
     } else if (action.action === 'remux' && action.entries.length === 1) {
       this.sources.set([]);
       this.tracks.set([]);
-      this.name = action.entries[0].name.replace(/\.[^.]+$/, '') + '.remux.mkv';
+      this.name = action.entries[0].name.replace(/\.[^.]+$/, '') + '.remux';
       this.dialog.set('remux');
       await this.addSource(action.entries[0].location);
     } else if (['disc', 'disc-mkvtoolnix'].includes(action.action) && action.entries.length === 1) {
@@ -406,7 +406,7 @@ export class AppComponent {
             sources: this.sources().map((s) => s.location),
             tracks: this.choices(this.tracks()),
             title: this.title,
-            name: this.name,
+            name: mkvName(this.name),
             destination: this.destination(),
           };
           await this.api.request('media/remux', request);
@@ -433,7 +433,7 @@ export class AppComponent {
           await this.api.request(`jobs/${this.reviewJob()!.id}/review`, {
             files: this.reviewFiles().map((f) => ({
               index: f.index,
-              name: f.name,
+              name: mkvName(f.name),
               tracks: this.choices(f.tracks),
             })),
           });
@@ -466,11 +466,15 @@ export class AppComponent {
     this.reviewFiles.set(
       (job.awaitingReview ?? []).map((f) => ({
         ...f,
+        name: f.name.replace(/\.mkv$/i, ''),
         tracks: f.tracks.map((t) => editable(t, 0, f.name)),
       })),
     );
     this.error.set('');
     this.dialog.set('review');
+  }
+  clearReviewNames() {
+    for (const file of this.reviewFiles()) for (const track of file.tracks) track.name = '';
   }
   openDisc(job: Job) {
     this.jobsOpen.set(false);
@@ -540,4 +544,9 @@ export class AppComponent {
       else this.jobsOpen.set(false);
     }
   }
+}
+
+function mkvName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed && !/\.mkv$/i.test(trimmed) ? trimmed + '.mkv' : trimmed;
 }

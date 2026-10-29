@@ -17,6 +17,11 @@
             "outputPath": "dist",
             "assets": [
               {
+                "glob": "*.svg",
+                "input": "node_modules/flag-icons/flags/4x3",
+                "output": "language-flags"
+              },
+              {
                 "glob": "**/*",
                 "input": "public"
               }
