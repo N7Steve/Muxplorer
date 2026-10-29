@@ -7,7 +7,7 @@ const env = z
     DOWNLOADS_ROOT: z.string().default(path.resolve('.local/downloads')),
     PLEX_ROOT: z.string().default(path.resolve('.local/plex')),
     WEB_DIR: z.string().default(path.resolve('../web/dist/browser')),
-    JOB_CONCURRENCY: z.coerce.number().int().min(1).max(2).default(1),
+    JOB_CONCURRENCY: z.coerce.number().int().min(1).default(1),
     COOKIE_SECURE: z.enum(['true', 'false']).default('false'),
     SEVENZIP_BIN: z.string().default('7zz'),
     MKVMERGE_BIN: z.string().default('mkvmerge'),

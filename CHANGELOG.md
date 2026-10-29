@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.1.5
+
+- Inicio manual sin límite de tareas simultáneas; eliminado el bloqueo al pulsar Empezar con dos trabajos activos.
+- Concurrencia automática sin máximo fijo y cola sin el anterior tope de 100 trabajos. La planificación no depende del límite visual del historial.
+
 ## 0.1.4
 
 - Preparación de ISO/BDMV con MKVToolNix en la cola de operaciones, con progreso, cancelación y reapertura para elegir títulos.

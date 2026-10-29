@@ -81,9 +81,6 @@ export class AppComponent {
       : this.disc(),
   );
   readonly visibleJobs = computed(() => this.api.jobs().filter((job) => !job.dismissed));
-  readonly runningCount = computed(
-    () => this.api.jobs().filter((job) => job.status === 'running').length,
-  );
   readonly selectedTitles = signal<Set<number>>(new Set());
   readonly reviewJob = signal<Job | null>(null);
   readonly reviewFiles = signal<{ index: number; name: string; tracks: EditableTrack[] }[]>([]);

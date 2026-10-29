@@ -46,7 +46,7 @@ test('all media engines are available automatically without an extra MakeMKV set
 }) => {
   await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Muxplorer 0.1.4', { exact: false })).toBeVisible();
+  await expect(modal.getByText('Muxplorer 0.1.5', { exact: false })).toBeVisible();
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
     'Disponible',
   );
@@ -261,7 +261,7 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
   expect(retained.ok()).toBeTruthy();
 });
 
-test('queued operations expose Empezar and respect the two-job limit', async ({ page }) => {
+test('queued operations expose Empezar with two jobs already running', async ({ page }) => {
   let started = false;
   const stamp = '2026-10-29T10:00:00.000Z';
   const makeJob = (id: string, status: string) => ({
@@ -299,5 +299,5 @@ test('queued operations expose Empezar and respect the two-job limit', async ({ 
   await expect(requested.getByText('En ejecución', { exact: true })).toBeVisible();
   await expect(
     drawer.locator('[data-job-id="waiting"]').getByRole('button', { name: 'Empezar', exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
 });

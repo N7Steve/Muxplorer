@@ -1,7 +1,7 @@
 {
   "name": "@muxplorer/web",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "scripts": {
     "build": "ng build",
     "dev": "ng serve --host 127.0.0.1 --proxy-config proxy.json",

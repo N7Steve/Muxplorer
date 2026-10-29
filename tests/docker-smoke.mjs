@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-docker-'));
 const name = `muxplorer-smoke-${Date.now()}`;
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.4';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.1.5';
 const keep = process.env.MUXPLORER_KEEP_TEST_CONTAINER === 'true';
 const password = 'Muxplorer-test-password-2026';
 const username = 'mux-admin';

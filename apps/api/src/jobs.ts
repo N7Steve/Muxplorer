@@ -35,7 +35,7 @@ export class Jobs implements OnModuleDestroy {
   private readonly secrets = new Map<string, unknown>();
   private stopped = false;
   constructor(private readonly store: Store) {
-    for (const job of this.list())
+    for (const job of this.scheduled())
       if (job.status === 'running' || job.status === 'pending') {
         job.status = 'interrupted';
         job.stage = 'Interrumpido por reinicio. Revisa el destino y los temporales.';
@@ -64,6 +64,15 @@ export class Jobs implements OnModuleDestroy {
       }[]
     ).map((row) => JSON.parse(row.data) as Job);
   }
+  private scheduled(): Job[] {
+    return (
+      this.store.db
+        .prepare(
+          "SELECT data FROM jobs WHERE json_extract(data, '$.status') IN ('pending', 'running') ORDER BY rowid",
+        )
+        .all() as { data: string }[]
+    ).map((row) => JSON.parse(row.data) as Job);
+  }
   get(id: string): Job {
     const row = this.store.db.prepare('SELECT data FROM jobs WHERE id=?').get(id) as
       { data: string } | undefined;
@@ -83,8 +92,6 @@ export class Jobs implements OnModuleDestroy {
     destination?: Location,
     ephemeral?: unknown,
   ) {
-    if (this.list().filter((j) => j.status === 'pending' || j.status === 'running').length >= 100)
-      problem('La cola tiene demasiados trabajos pendientes.');
     const job: Job = {
       id: randomUUID(),
       kind,
@@ -156,8 +163,6 @@ export class Jobs implements OnModuleDestroy {
     const job = this.get(id);
     if (job.status !== 'pending' || job.awaitingReview || job.awaitingDisc)
       problem('Solo se pueden empezar trabajos que esperan en la cola.');
-    if (this.running.size >= 2)
-      problem('Ya hay dos trabajos en ejecución. Espera a que termine uno.');
     diagnostic('job.start_requested', { jobId: id });
     this.drain(id);
     return this.get(id);
@@ -182,10 +187,10 @@ export class Jobs implements OnModuleDestroy {
   }
   private drain(forcedId?: string) {
     if (this.stopped) return;
-    const queued = this.list().reverse();
+    const queued = this.scheduled();
     if (forcedId) queued.sort((a, b) => Number(b.id === forcedId) - Number(a.id === forcedId));
     for (const job of queued) {
-      if (this.running.size >= (job.id === forcedId ? 2 : config.JOB_CONCURRENCY)) continue;
+      if (job.id !== forcedId && this.running.size >= config.JOB_CONCURRENCY) continue;
       if (
         job.status !== 'pending' ||
         job.awaitingReview ||

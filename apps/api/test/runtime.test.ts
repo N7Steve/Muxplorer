@@ -185,7 +185,7 @@ test('process diagnostics correlate exits and redact passwords and beta keys', a
   assert.ok(end.detail.includes('[oculto]'));
 });
 
-test('manual start runs a queued job beside an active job, limits concurrency and persists dismissal', async () => {
+test('manual start allows multiple simultaneous jobs and persists dismissal', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'mux-queue-'));
   const store = new Store(directory),
     jobs = new Jobs(store);
@@ -212,10 +212,11 @@ test('manual start runs a queued job beside an active job, limits concurrency an
     assert.throws(() => jobs.dismiss(first.id), /Termina o cancela/);
     jobs.start(second.id);
     assert.equal(jobs.get(second.id).status, 'running');
-    assert.throws(() => jobs.start(third.id), /dos trabajos/);
+    jobs.start(third.id);
+    assert.equal(jobs.get(third.id).status, 'running');
     releases.get(first.id)!();
     await until(() => jobs.get(first.id).status === 'completed');
-    assert.equal(jobs.get(third.id).status, 'pending');
+    assert.equal(jobs.get(third.id).status, 'running');
     const original = jobs.get(first.id).results;
     jobs.dismiss(first.id);
     assert.equal(jobs.get(first.id).dismissed, true);
@@ -266,6 +267,38 @@ test('prepared disc selection survives restart, waits for a decision and resumes
     assert.equal(restarted.get(job.id).awaitingDisc, undefined);
     assert.deepEqual(restarted.get(job.id).destination, { root: 'plex', path: '' });
     await restarted.onModuleDestroy();
+  } finally {
+    await jobs.onModuleDestroy();
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('manual start schedules pending work outside the visible history window', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mux-history-queue-'));
+  const store = new Store(directory),
+    jobs = new Jobs(store);
+  t.mock.method(console, 'log', () => undefined);
+  try {
+    const queued = jobs.enqueue('copy', {}, []);
+    const insert = store.db.prepare('INSERT INTO jobs VALUES (?, ?, ?)');
+    store.db.exec('BEGIN');
+    for (let i = 0; i < 501; i++)
+      insert.run(
+        'history-' + i,
+        JSON.stringify({ ...queued, id: 'history-' + i, status: 'completed' }),
+        '{}',
+      );
+    store.db.exec('COMMIT');
+    assert.ok(!jobs.list().some((job) => job.id === queued.id));
+    let executed = false;
+    jobs.register('copy', async () => {
+      executed = true;
+    });
+    jobs.start(queued.id);
+    for (let i = 0; i < 100 && jobs.get(queued.id).status !== 'completed'; i++) await sleep(5);
+    assert.ok(executed);
+    assert.equal(jobs.get(queued.id).status, 'completed');
   } finally {
     await jobs.onModuleDestroy();
     store.close();

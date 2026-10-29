@@ -54,7 +54,7 @@
       <mx-icon name="ShieldCheck" [size]="15" />Procesamiento local · Acceso protegido
     </div>
   </section>
-  <span class="login-version">MUXPLORER · 0.1.4</span>
+  <span class="login-version">MUXPLORER · 0.1.5</span>
 </main>
 } @else {
 <div class="app-shell">
@@ -125,7 +125,7 @@
             name="CircleHelp"
             [size]="14"
           /></button
-        ><span class="sidebar-version">MUXPLORER / 0.1.4</span>
+        ><span class="sidebar-version">MUXPLORER / 0.1.5</span>
       </div>
     </aside>
     <main class="main-area">
@@ -278,12 +278,7 @@
           {{ job.awaitingDisc ? 'Elegir títulos' : 'Ver análisis' }}
         </button>
         } @if(job.status === 'pending' && !job.awaitingReview && !job.awaitingDisc){
-        <button
-          class="button primary compact"
-          (click)="start(job)"
-          [disabled]="runningCount() >= 2"
-          title="Empezar ahora; máximo dos trabajos simultáneos"
-        >
+        <button class="button primary compact" (click)="start(job)" title="Empezar ahora">
           Empezar
         </button>
         } @if(['completed','failed','cancelled'].includes(job.status)){
@@ -332,8 +327,8 @@
     }
   </div>
   <footer>
-    <span class="status-dot"></span>Cola automática: {{ api.system()?.concurrency ?? 1 }} · Hasta 2
-    con Empezar
+    <span class="status-dot"></span>Cola automática: {{ api.system()?.concurrency ?? 1 }} · Empezar
+    sin límite
   </footer>
 </aside>
 } @if (context(); as ctx) {
@@ -592,7 +587,7 @@
         }
       </dl>
       } @if(modal === 'settings'){
-      <p class="muted">Muxplorer 0.1.4 · Tus archivos se procesan en el servidor.</p>
+      <p class="muted">Muxplorer 0.1.5 · Tus archivos se procesan en el servidor.</p>
       <div class="tool-list">
         @if(api.system(); as system){@for(tool of toolKeys; track tool){
         <div class="tool-item">
@@ -608,7 +603,7 @@
         }}
       </div>
       <p class="muted">
-        Concurrencia automática: {{ api.system()?.concurrency ?? 1 }} · Hasta 2 con Empezar · Sesión
+        Concurrencia automática: {{ api.system()?.concurrency ?? 1 }} · Empezar sin límite · Sesión
         de 12 horas
       </p>
       } @if(modal === 'shortcuts'){

@@ -29,7 +29,7 @@ docker compose down
 - El menú contextual de archivos comprimidos permite extraer aquí, en una nueva carpeta o en una ubicación elegida, con contraseña opcional. Inicia RAR multipartes desde su primer volumen y conserva todas las partes en la misma carpeta; lo mismo para `.7z.001`.
 - MKVToolNix inspecciona las pistas reales. Activa, desactiva, reordena, cambia nombres, idioma BCP 47, default/forced y título. Añade varias fuentes de audio/subtítulos existentes mediante el selector. Cada fuente mantiene su propio espacio de IDs; no se concatenan archivos. La salida siempre es un MKV nuevo.
 - MakeMKV analiza una ISO o `BDMV/index.bdmv`, muestra títulos, duración, capítulos, tamaño y streams disponibles. Selecciona uno o más títulos. Tras extraerlos, el trabajo solicita **revisión de las pistas reales generadas**. Confirma la selección definitiva para ejecutar un remux adicional y publicar los resultados. No se emparejan IDs del disco y MKV por heurísticas.
-- El panel Operaciones muestra etapas, progreso disponible, mensajes, resultados y errores. **Empezar** permite iniciar una tarea en cola junto a la activa, hasta dos simultáneas. Los análisis preparados ofrecen **Elegir títulos** y los MKV temporales **Revisar pistas**. El icono **Quitar de operaciones** retira una tarea completada, fallida o cancelada, limpia sus temporales y conserva sus resultados y registro en SQLite. Puedes navegar mientras trabaja, cancelar, revisar MakeMKV o abrir el destino. El historial visible muestra los últimos 500 trabajos; SQLite conserva los registros anteriores.
+- El panel Operaciones muestra etapas, progreso disponible, mensajes, resultados y errores. **Empezar** permite iniciar una tarea en cola junto a las activas, sin límite de tareas simultáneas. Los análisis preparados ofrecen **Elegir títulos** y los MKV temporales **Revisar pistas**. El icono **Quitar de operaciones** retira una tarea completada, fallida o cancelada, limpia sus temporales y conserva sus resultados y registro en SQLite. Puedes navegar mientras trabaja, cancelar, revisar MakeMKV o abrir el destino. El historial visible muestra los últimos 500 trabajos; SQLite conserva los registros anteriores.
 
 ## Despliegue en TrueNAS SCALE
 
@@ -57,7 +57,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.4 .`, exporta con `docker save -o muxplorer-0.1.4.tar muxplorer:0.1.4`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.4` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.5 .`, exporta con `docker save -o muxplorer-0.1.5.tar muxplorer:0.1.5`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.5` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -109,7 +109,7 @@ El navegador sincroniza operaciones por HTTP cada dos segundos además de SSE y 
 - Una selección de varios archivos/títulos puede completar algunos antes de fallar en otro. Los resultados publicados aparecen en el trabajo; no se revierten automáticamente.
 - Reiniciar marca trabajos pendientes o en ejecución como **interrumpidos**. No se reintentan automáticamente. Un checkpoint de MakeMKV que ya estaba esperando revisión puede revisarse explícitamente tras el reinicio. Un análisis MKVToolNix que ya había terminado de preparar el disco conserva la elección de títulos y el contenido privado; puede continuarse explícitamente desde Operaciones. El resto debe volver a iniciarse después de inspeccionar el destino. Los temporales retenidos se limpian desde Detalles del trabajo una vez cancelado/interrumpido.
 - Cancelar una CLI envía TERM y después KILL a su grupo de procesos en Linux. Copias se cancelan por streaming. La eliminación y publicación se cancelan entre elementos/etapas; un renombrado o borrado ya iniciado no se revierte.
-- Concurrencia automática configurable 1–2, inicialmente 1; el botón Empezar permite añadir manualmente una segunda operación sin superar dos activas. Las mutaciones de archivos están serializadas; algunas etapas de motores distintos pueden coincidir con concurrencia 2.
+- Concurrencia automática configurable, inicialmente 1; el botón Empezar inicia cualquier tarea en cola sin límite de operaciones simultáneas. Las mutaciones de archivos están serializadas; algunas etapas de motores distintos pueden coincidir con concurrencia 2.
 
 Los datasets se consideran almacenamiento de confianza compartido con tus aplicaciones. Evita que otro proceso cambie simultáneamente los padres de una ruta o modifique un origen en uso. Las comprobaciones de rutas no sustituyen aislamiento frente a un usuario local hostil con permisos de modificación sobre los mismos directorios. No se han probado ACL/ZFS en el NAS real.
 
@@ -124,7 +124,7 @@ Los datasets se consideran almacenamiento de confianza compartido con tus aplica
 | `DOWNLOADS_PATH`, `PLEX_PATH`                 | `./.local/downloads`, `./.local/plex` | Directorios del host en desarrollo                                     |
 | `DOWNLOADS_ROOT`, `PLEX_ROOT`                 | `/data/downloads`, `/data/plex`       | Raíces internas; no cambiar en TrueNAS                                 |
 | `CONFIG_DIR`                                  | `/config`                             | SQLite, administrador y configuración persistente                      |
-| `JOB_CONCURRENCY`                             | `1`                                   | Concurrencia automática, 1–2; inicio manual limitado a dos activas     |
+| `JOB_CONCURRENCY`                             | `1`                                   | Concurrencia automática; inicio manual sin límite                      |
 | `COOKIE_SECURE`                               | `false`                               | `true` cuando se accede mediante HTTPS                                 |
 | `MAKEMKV_HOME`                                | `/config/makemkv`                     | Configuración del motor y activación                                   |
 | `SEVENZIP_BIN`, `MKVMERGE_BIN`, `MAKEMKV_BIN` | `7zz`, `mkvmerge`, `makemkvcon`       | Rutas de ejecutables para desarrollo                                   |
@@ -161,7 +161,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.4 .
+docker build -t muxplorer:0.1.5 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance

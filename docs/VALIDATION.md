@@ -4,24 +4,30 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 | Comprobación                                            | Resultado                                                                                              |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                             | 42 pruebas correctas                                                                                   |
+| `pnpm test`                                             | 43 pruebas correctas                                                                                   |
 | `pnpm lint`                                             | Sin errores ni advertencias                                                                            |
 | `pnpm typecheck`                                        | API y plantillas Angular correctas                                                                     |
 | `pnpm format:check`                                     | Correcto                                                                                               |
 | `pnpm build`                                            | NestJS y Angular compilados; frontend inicial aproximadamente 385 KB, 100 KB de transferencia estimada |
-| `docker build -t muxplorer:0.1.4 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
+| `docker build -t muxplorer:0.1.5 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
 | `pnpm test:acceptance`                                  | Smoke Docker y diez pruebas de navegador correctas                                                     |
 | Ambos YAML mediante `docker compose ... config --quiet` | Correctos                                                                                              |
 | Healthcheck del contenedor de pruebas                   | Estado healthy tras ejecutar operaciones y reiniciar el contenedor                                     |
+
+## Cambios 0.1.5
+
+- Empezar no limita las tareas simultáneas. Se comprueban tres trabajos activos y el botón disponible con dos en ejecución.
+- JOB_CONCURRENCY admite cualquier entero positivo para la cola automática, conservando el valor predeterminado 1.
+- La cola no tiene el anterior tope de 100 trabajos; su planificación y recuperación tras reinicio se consultan por separado del historial visible de 500 registros. Se verifica iniciar un pendiente que ha quedado fuera de ese historial.
 
 ## Mejoras 0.1.4
 
 - Preparación real de ISO/BDMV como operación en segundo plano, selección posterior de títulos y continuidad del mismo trabajo hasta la revisión y publicación. Se comprueba en los logs que la ISO se extrae una sola vez.
 - Cancelación de una preparación lista, eliminación de su caché y retirada de la operación sin eliminar la ISO original.
-- Inicio manual de una tarea mientras otra sigue activa, rechazo de una tercera simultánea y persistencia de la retirada en SQLite.
+- Inicio manual de una tarea mientras otra sigue activa, inicio de una tercera simultánea y persistencia de la retirada en SQLite.
 - Elección de títulos preparada conservada tras reinicio y reanudación explícita del mismo trabajo.
 - Navegador: pasar análisis a segundo plano, reabrir, elegir título, revisar pistas, escribir un nombre con el teclado y vaciar otro, comprobar los nombres reales del MKV y retirar la operación de forma persistente sin borrar el resultado.
-- Navegador: botón Empezar y límite de dos tareas; diseño de escritorio y móvil con fuentes mayores. Captura `test-results/visual/review-editable.png`.
+- Navegador: botón Empezar disponible con dos tareas activas; diseño de escritorio y móvil con fuentes mayores. Captura `test-results/visual/review-editable.png`.
 
 ## Correcciones 0.1.2
 
