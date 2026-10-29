@@ -18,7 +18,13 @@ export interface Action {
   standalone: true,
   imports: [FormsModule, DatePipe, DragDropModule, Icon],
   templateUrl: './explorer.html',
-  host: { '[class.focused]': 'active()', '[class.picker]': 'picker()' },
+  host: {
+    '[class.focused]': 'active()',
+    '[class.picker]': 'picker()',
+    '(mousedown)': 'mouseNavigation($event)',
+    '(mouseup)': 'mouseNavigation($event)',
+    '(auxclick)': 'mouseNavigation($event)',
+  },
 })
 export class Explorer {
   readonly api = inject(Api);
@@ -132,6 +138,15 @@ export class Explorer {
       this.history.update((h) => h.slice(0, -1));
       this.navigate(previous, false);
     }
+  }
+  mouseNavigation(event: MouseEvent) {
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type !== 'mouseup') return;
+    this.activated.emit();
+    if (event.button === 3) this.back();
+    else this.forward();
   }
   forward() {
     const next = this.future().at(-1);

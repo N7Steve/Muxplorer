@@ -93,6 +93,16 @@ export class Processes {
               stop();
             }
           }
+        // A redraw's current percentage is complete before its next backspace/newline.
+        // Waiting for that delimiter leaves the UI one update behind until cancellation.
+        if (/^\s*\d{1,3}%(?:\s|$)/.test(pending)) {
+          try {
+            options.onLine?.(sanitize(pending));
+          } catch (error) {
+            callbackError = error;
+            stop();
+          }
+        }
         if (pending.length > 1024 * 1024) {
           overflow = true;
           stop();

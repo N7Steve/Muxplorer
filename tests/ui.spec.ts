@@ -22,6 +22,30 @@ test('authenticated explorer performs real folder operations and displays custom
   await dialog.getByRole('button', { name: 'Crear carpeta' }).click();
   const row = left.getByRole('row').filter({ hasText: name });
   await expect(row).toBeVisible();
+  await row.dblclick();
+  await expect(left.getByRole('button', { name: 'Carpeta superior', exact: true })).toBeEnabled();
+  const right = page.locator('mx-explorer[panelId="right"]');
+  const rightPath = await right.locator('.pathbar').innerText();
+  const mouse = await page.context().newCDPSession(page);
+  const box = (await left.boundingBox())!;
+  const sideButton = async (button: 'back' | 'forward') => {
+    for (const type of ['mousePressed', 'mouseReleased'])
+      await mouse.send('Input.dispatchMouseEvent', {
+        type,
+        button,
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        clickCount: 1,
+      });
+  };
+  await sideButton('back');
+  await expect(row).toBeVisible();
+  await sideButton('forward');
+  await expect(row).toHaveCount(0);
+  await expect(left.getByRole('button', { name: 'Carpeta superior', exact: true })).toBeEnabled();
+  expect(await right.locator('.pathbar').innerText()).toBe(rightPath);
+  await left.getByRole('button', { name: 'Atrás', exact: true }).click();
+  await expect(row).toBeVisible();
   await row.click({ button: 'right' });
   await page.getByRole('menuitem', { name: /Renombrar/ }).click();
   await dialog.getByLabel('Nombre', { exact: true }).fill(`${name} renamed`);

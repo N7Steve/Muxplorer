@@ -23,7 +23,7 @@ test('7-Zip progress is received live through backspace redraws and ignores regr
       process.execPath,
       [
         '-e',
-        String.raw`process.stdout.write(' 65%');setTimeout(()=>process.stdout.write('\b\b\b\b 98%\b\b\b\b'),30);setInterval(()=>{},1000);`,
+        String.raw`process.stdout.write(' 6');setTimeout(()=>process.stdout.write('5%'),15);setTimeout(()=>process.stdout.write('\b\b\b\b 98%'),40);setInterval(()=>{},1000);`,
       ],
       {
         signal: controller.signal,
@@ -74,6 +74,8 @@ test('cancelling freezes further CLI updates and clears the unfinished percentag
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-job-progress-'));
   const store = new Store(temporary),
     jobs = new Jobs(store);
+  const events: Job[] = [];
+  const subscription = jobs.events.subscribe(({ data }) => events.push(data));
   try {
     jobs.register('extract', async (_payload, context) => {
       context.update('Extrayendo con 7-Zip', 98);
@@ -93,6 +95,8 @@ test('cancelling freezes further CLI updates and clears the unfinished percentag
       await new Promise((resolve) => setTimeout(resolve, 5));
     jobs.cancel(job.id);
     assert.equal(jobs.get(job.id).progress, null);
+    assert.ok(events.some((event) => event.progress === 98));
+    assert.equal(events.find((event) => event.stage === 'En cola')?.status, 'pending');
     for (let n = 0; n < 100 && jobs.get(job.id).status !== 'cancelled'; n++)
       await new Promise((resolve) => setTimeout(resolve, 5));
     const final = jobs.get(job.id);
@@ -100,6 +104,7 @@ test('cancelling freezes further CLI updates and clears the unfinished percentag
     assert.equal(final.progress, null);
     assert.equal(final.error, undefined);
   } finally {
+    subscription.unsubscribe();
     await jobs.onModuleDestroy();
     store.close();
     await rm(temporary, { recursive: true, force: true });

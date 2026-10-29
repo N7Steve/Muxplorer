@@ -88,6 +88,7 @@ export function makeSource(absolute: string) {
 }
 @Injectable()
 export class MakeMkv implements OnModuleInit {
+  private activation?: Promise<void>;
   constructor(
     private readonly paths: Paths,
     private readonly files: Files,
@@ -123,17 +124,53 @@ export class MakeMkv implements OnModuleInit {
   }
   async inspect(location: Location): Promise<Disc> {
     const source = await this.source(location);
-    const result = await this.processes.run(
-      config.MAKEMKV_BIN,
-      ['-r', '--noscan', '--cache=128', 'info', source],
-      { env: this.env(), timeout: 10 * 60_000, captureLimit: 16 * 1024 * 1024 },
-    );
+    const inspect = () =>
+      this.processes.run(config.MAKEMKV_BIN, ['-r', '--noscan', '--cache=128', 'info', source], {
+        env: this.env(),
+        timeout: 10 * 60_000,
+        captureLimit: 16 * 1024 * 1024,
+        allowedCodes: [0, 1],
+      });
+    let result = await inspect();
+    if (
+      /^MSG:5053,|^MSG:\d+,[^\n]*(?:evaluation period has expired|shareware functionality unavailable)/im.test(
+        result.stdout,
+      )
+    ) {
+      this.activation ??= this.activateBeta().finally(() => {
+        this.activation = undefined;
+      });
+      await this.activation;
+      result = await inspect();
+    }
     const disc = parseDisc(result.stdout);
     if (!disc.titles.length)
       problem(
         `MakeMKV no encontró títulos. Comprueba instalación, licencia y origen. ${disc.messages.slice(-3).join(' ')}`,
       );
     return { location, ...disc };
+  }
+  private async activateBeta() {
+    const filename = path.join(this.env().HOME, '.MakeMKV', 'settings.conf');
+    const settings = await readFile(filename, 'utf8');
+    const existing = /^app_Key\s*=\s*"([^"]*)"/m.exec(settings)?.[1];
+    if (existing && !existing.startsWith('T-'))
+      problem('MakeMKV rechazó la activación. Revisa tu licencia en la configuración de MakeMKV.');
+    try {
+      const response = await fetch('https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053', {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const html = await response.text();
+      const key = /<code[^>]*>\s*(T-[A-Za-z0-9_@.-]{50,100})\s*<\/code>/i.exec(html)?.[1];
+      if (!key) throw new Error('Clave beta no disponible');
+      const updated = settings.replace(/^app_Key\s*=.*(?:\r?\n|$)/gm, '');
+      await writeFile(filename, `${updated.trimEnd()}\napp_Key = "${key}"\n`, { mode: 0o600 });
+    } catch {
+      problem(
+        'MakeMKV necesita activación y no se pudo obtener la clave beta oficial. Comprueba la conexión a forum.makemkv.com o configura app_Key en /config/makemkv/.MakeMKV/settings.conf.',
+      );
+    }
   }
   async convert(request: MakeRequest, context: JobContext) {
     safeName(request.name);

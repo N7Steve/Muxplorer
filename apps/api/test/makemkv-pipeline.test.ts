@@ -133,3 +133,61 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+test('MakeMKV activates a fresh beta from the official page, retries and preserves personal licenses', async (t) => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-beta-'));
+  const previousHome = config.MAKEMKV_HOME;
+  config.MAKEMKV_HOME = path.join(temporary, 'home');
+  try {
+    const downloads = path.join(temporary, 'downloads'),
+      plex = path.join(temporary, 'plex');
+    await mkdir(downloads);
+    await mkdir(plex);
+    await writeFile(path.join(downloads, 'disc.iso'), 'fixture');
+    const key = 'T-' + 'a'.repeat(66);
+    const fetchMock = t.mock.method(globalThis, 'fetch', async (url: string | URL | Request) => {
+      assert.equal(String(url), 'https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053');
+      return new Response(`<code>${key}</code>`);
+    });
+    let calls = 0;
+    class TrialProcess extends Processes {
+      override async run() {
+        calls++;
+        return calls === 1
+          ? { code: 1, stdout: 'MSG:5053,1544,1,"Start evaluation period now?"' }
+          : { code: 0, stdout: 'TINFO:0,2,0,"Movie"' };
+      }
+    }
+    const paths = new Paths({ downloads, plex }),
+      processes = new TrialProcess();
+    const files = new Files(paths, processes);
+    const engine = new MakeMkv(paths, files, processes, new Mkv(paths, files, processes));
+    await engine.onModuleInit();
+    assert.equal((await engine.inspect({ root: 'downloads', path: 'disc.iso' })).titles.length, 1);
+    assert.equal(calls, 2);
+    const filename = path.join(config.MAKEMKV_HOME, '.MakeMKV', 'settings.conf');
+    const settings = await readFile(filename, 'utf8');
+    assert.ok(settings.includes(`app_Key = "${key}"`));
+    assert.ok(settings.includes('app_DefaultSelectionString = "+sel:all"'));
+    await writeFile(filename, settings.replace(key, 'personal-license'));
+    calls = 0;
+    await assert.rejects(
+      engine.inspect({ root: 'downloads', path: 'disc.iso' }),
+      /Revisa tu licencia/,
+    );
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.ok((await readFile(filename, 'utf8')).includes('personal-license'));
+    // A failed or changed official page leaves the existing configuration intact.
+    await writeFile(filename, settings);
+    calls = 0;
+    fetchMock.mock.mockImplementation(async () => new Response('unavailable', { status: 503 }));
+    await assert.rejects(
+      engine.inspect({ root: 'downloads', path: 'disc.iso' }),
+      /no se pudo obtener/,
+    );
+    assert.equal(await readFile(filename, 'utf8'), settings);
+  } finally {
+    config.MAKEMKV_HOME = previousHome;
+    await rm(temporary, { recursive: true, force: true });
+  }
+});

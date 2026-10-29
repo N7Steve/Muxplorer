@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.1.2
+
+- Progreso de extracción en directo sin esperar al siguiente redibujado y eventos SSE independientes para cada actualización.
+- Activación beta de MakeMKV desde su anuncio oficial al detectar evaluación pendiente o caducada, conservando licencias personales.
+- Botones laterales del ratón para navegar por el historial del panel y de los selectores sin salir de la aplicación.
+
 ## 0.1.1
 
 - MakeMKV se instala con permisos de ejecución correctos y queda habilitado desde el primer arranque. Se elimina el diálogo adicional de aceptación y el aviso de instalación manual.

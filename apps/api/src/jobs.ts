@@ -48,7 +48,8 @@ export class Jobs implements OnModuleDestroy {
         .run(job.id, JSON.stringify(job), JSON.stringify(payload));
     else
       this.store.db.prepare('UPDATE jobs SET data=? WHERE id=?').run(JSON.stringify(job), job.id);
-    this.events.next({ data: job });
+    // SSE serialization may be deferred until after the next CLI update.
+    this.events.next({ data: structuredClone(job) });
   }
   list(): Job[] {
     return (

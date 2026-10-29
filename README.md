@@ -22,6 +22,7 @@ docker compose down
 
 ## Uso
 
+- Los botones laterales atrás/adelante del ratón recorren el historial del panel situado bajo el cursor, también en los selectores, y bloquean la navegación del navegador.
 - Cada panel navega de forma independiente por Downloads y PlexMedia. Doble clic abre carpetas; breadcrumbs, atrás, adelante y subir permiten recorrerlas. Ordena por columnas y filtra por nombre.
 - Ctrl/clic alterna selección, Shift/clic selecciona un rango, Ctrl+A selecciona todo. Ctrl+C / Ctrl+X / Ctrl+V prepara una copia o movimiento y abre la confirmación de destino. F2 renombra, Supr solicita confirmación, Enter abre, Retroceso sube, F5 actualiza y `/` enfoca el filtro.
 - Copia y movimiento usan un selector visual que puede navegar por cualquiera de las raíces. Arrastrar entre paneles abre un diálogo para elegir explícitamente copiar o mover.
@@ -56,7 +57,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.1 .`, exporta con `docker save -o muxplorer-0.1.1.tar muxplorer:0.1.1`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.1` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.2 .`, exporta con `docker save -o muxplorer-0.1.2.tar muxplorer:0.1.2`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.2` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -77,7 +78,7 @@ Un volumen nuevo de `/config` se inicializa desde la imagen con propietario 1000
 
 MakeMKV 2.0.0 se instala automáticamente en la misma imagen, con sus bibliotecas y permisos de ejecución para el usuario del contenedor. Está habilitado desde el primer arranque: no hay que crear otra imagen, definir variables de aceptación ni confirmar una pantalla adicional. La construcción y las pruebas ejecutan el motor como usuario sin privilegios para detectar errores de instalación antes de publicar.
 
-La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings.conf`, conservando los ajustes existentes. El valor `app_DefaultSelectionString = "+sel:all"` permite conservar las pistas durante la extracción y revisarlas después. El análisis del origen muestra los errores reales del motor cuando una operación no puede completarse.
+La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings.conf`, conservando los ajustes existentes. El valor `app_DefaultSelectionString = "+sel:all"` permite conservar las pistas durante la extracción y revisarlas después. Si el motor solicita iniciar la evaluación o indica que ha caducado, se obtiene la clave beta vigente del anuncio oficial de MakeMKV y se repite el análisis una sola vez. Requiere conexión HTTPS a `forum.makemkv.com`; no incorpora una clave fija ni modifica licencias personales. Si no se puede activar, muestra una explicación para configurar `app_Key` en ese mismo archivo. El análisis del origen muestra los mensajes del motor cuando una operación no puede completarse.
 
 Los binarios originales se obtienen de la [distribución oficial para Linux](https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224), con hashes SHA-256 verificados. Las bibliotecas OSS se compilan sin escritorio y se conservan los avisos y licencias originales en la imagen. Interfaces empleadas: [modo robot de MakeMKV](https://www.makemkv.com/developers/usage.txt) y [mkvmerge](https://mkvtoolnix.download/doc/mkvmerge.html).
 
@@ -144,7 +145,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.1 .
+docker build -t muxplorer:0.1.2 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance

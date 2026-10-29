@@ -4,15 +4,21 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 
 | Comprobación                                            | Resultado                                                                                              |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `pnpm test`                                             | 38 pruebas correctas                                                                                   |
+| `pnpm test`                                             | 39 pruebas correctas                                                                                   |
 | `pnpm lint`                                             | Sin errores ni advertencias                                                                            |
 | `pnpm typecheck`                                        | API y plantillas Angular correctas                                                                     |
 | `pnpm format:check`                                     | Correcto                                                                                               |
 | `pnpm build`                                            | NestJS y Angular compilados; frontend inicial aproximadamente 385 KB, 100 KB de transferencia estimada |
-| `docker build -t muxplorer:0.1.1 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
+| `docker build -t muxplorer:0.1.2 .`                     | Imagen Linux amd64 construida con los tres motores y sus dependencias                                  |
 | `pnpm test:acceptance`                                  | Smoke Docker y seis pruebas de navegador correctas                                                     |
 | Ambos YAML mediante `docker compose ... config --quiet` | Correctos                                                                                              |
 | `docker compose up --build -d`                          | Aplicación arrancada en 8098 y healthcheck healthy                                                     |
+
+## Correcciones 0.1.2
+
+- Porcentaje completo sin delimitador final (también dividido entre chunks) y eventos SSE que conservan el valor y estado de cada actualización.
+- Botones físicos atrás/adelante enviados a Chromium mediante CDP: navegan una sola vez por el panel bajo el cursor y conservan la ubicación del otro panel.
+- Activación beta simulada: obtiene la clave del anuncio oficial, conserva los ajustes y repite el análisis; protege las licencias personales y conserva la configuración si la descarga falla. Se comprobó además desde la imagen Docker el acceso HTTPS al anuncio oficial y la presencia de una clave con el formato esperado.
 
 ## Pruebas de extremo a extremo
 
