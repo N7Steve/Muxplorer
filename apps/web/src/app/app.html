@@ -54,7 +54,7 @@
       <mx-icon name="ShieldCheck" [size]="15" />Procesamiento local · Acceso protegido
     </div>
   </section>
-  <span class="login-version">MUXPLORER · 0.1.5</span>
+  <span class="login-version">MUXPLORER · 0.1.6</span>
 </main>
 } @else {
 <div class="app-shell">
@@ -140,7 +140,7 @@
             name="CircleHelp"
             [size]="14"
           /></button
-        ><span class="sidebar-version">MUXPLORER / 0.1.5</span>
+        ><span class="sidebar-version">MUXPLORER / 0.1.6</span>
       </div>
     </aside>
     <main class="main-area">
@@ -596,6 +596,35 @@
       <label>Título del MKV<input [(ngModel)]="title" placeholder="Título de la película" /></label>
       <mx-tracks [tracks]="tracks()" [metadataOnly]="true" />
       } @if(modal === 'remux'){
+      <div class="source-chips" aria-label="Archivos de origen">
+        @for(source of sources(); track source.location.root + ':' + source.location.path; let index
+        = $index){
+        <span [style.--source-color]="sourceColor(index)" [title]="display(source.location)">
+          <mx-icon name="File" [size]="16" />
+          {{ index + 1 }} · {{ source.location.path.split('/').at(-1) }} @if(index > 0){
+          <button
+            class="icon-button"
+            (click)="removeSource(index)"
+            [disabled]="busy()"
+            [attr.aria-label]="'Retirar archivo ' + source.location.path.split('/').at(-1)"
+          >
+            <mx-icon name="X" [size]="14" />
+          </button>
+          }
+        </span>
+        }
+        <button
+          class="button secondary compact"
+          (click)="picking.set(picking() === 'external' ? null : 'external')"
+          [disabled]="busy()"
+        >
+          <mx-icon name="Plus" [size]="16" />Añadir archivo
+        </button>
+      </div>
+      <p class="field-help">
+        Combina pistas de varios archivos. El vídeo de los archivos añadidos queda desmarcado;
+        puedes seleccionarlo si lo necesitas.
+      </p>
       <mx-tracks [tracks]="tracks()" />
       <div class="form-grid">
         <label
@@ -691,7 +720,7 @@
         }
       </dl>
       } @if(modal === 'settings'){
-      <p class="muted">Muxplorer 0.1.5 · Tus archivos se procesan en el servidor.</p>
+      <p class="muted">Muxplorer 0.1.6 · Tus archivos se procesan en el servidor.</p>
       <div class="tool-list">
         @if(api.system(); as system){@for(tool of toolKeys; track tool){
         <div class="tool-item">
@@ -750,7 +779,7 @@
           panelId="picker"
           [picker]="true"
           [filePicker]="picking() === 'external'"
-          [initialRoot]="destination().root"
+          [initialRoot]="picking() === 'external' ? sources()[0].location.root : destination().root"
           (navigated)="picking() === 'destination' && destination.set($event)"
           (action)="choose($event)"
         />

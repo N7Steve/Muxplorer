@@ -31,6 +31,17 @@ test.beforeAll(() => {
     '/data/downloads/Muestra.wav',
     '/data/downloads/Original.srt',
   );
+  exec(
+    'mkvmerge',
+    '-o',
+    '/data/downloads/Pelicula.mkv',
+    '/data/downloads/Disc fixture/BDMV/STREAM/00000.m2ts',
+  );
+  exec(
+    'node',
+    '-e',
+    "require('fs').copyFileSync('/data/downloads/Pelicula.mkv', '/data/downloads/Otra.mkv')",
+  );
   exec('7zz', 'a', '-tzip', '/data/downloads/Archivo de prueba.zip', '/data/downloads/Notas.txt');
   mkdirSync('test-results/visual', { recursive: true });
 });
@@ -68,7 +79,7 @@ test('all media engines are available automatically without an extra MakeMKV set
 }) => {
   await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Muxplorer 0.1.5', { exact: false })).toBeVisible();
+  await expect(modal.getByText('Muxplorer 0.1.6', { exact: false })).toBeVisible();
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
     'Disponible',
   );
@@ -93,7 +104,7 @@ test('desktop explorer opens MKVToolNix on double click and remuxes selected tra
   await sample.dblclick();
   const modal = page.getByRole('dialog');
   await expect(modal.locator('.track-row')).toHaveCount(2);
-  await expect(modal.getByRole('button', { name: 'Añadir audio o subtítulos' })).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: 'Añadir archivo', exact: true })).toBeVisible();
   await expect(modal.getByRole('heading', { name: 'Muestra.mkv' })).toBeVisible();
   await modal.getByLabel('Título del MKV').fill('Prueba desde el navegador');
   const resultName = `Resultado UI ${Date.now()}.mkv`;
@@ -106,6 +117,120 @@ test('desktop explorer opens MKVToolNix on double click and remuxes selected tra
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
+test('remux combines three sources with colors, duplicate protection and removal', async ({
+  page,
+}) => {
+  await page
+    .locator('mx-explorer[panelId="left"]')
+    .getByRole('row')
+    .filter({ hasText: 'Muestra.mkv' })
+    .dblclick();
+  const modal = page.getByRole('dialog');
+  await expect(modal.locator('.track-row')).toHaveCount(2);
+  const add = async (name: string) => {
+    await modal.getByRole('button', { name: 'Añadir archivo', exact: true }).click();
+    await modal
+      .locator('mx-explorer[panelId="picker"]')
+      .getByRole('row')
+      .filter({ hasText: name })
+      .dblclick();
+  };
+  await add('Muestra.wav');
+  await expect(modal.locator('.track-row')).toHaveCount(3);
+  await add('Original.srt');
+  await expect(modal.locator('.track-row')).toHaveCount(4);
+  const colors = await modal
+    .locator('.source-chips > span')
+    .evaluateAll((chips) =>
+      chips.map((chip) => (chip as HTMLElement).style.getPropertyValue('--source-color')),
+    );
+  expect(new Set(colors).size).toBe(3);
+  for (let source = 0; source < 3; source++) {
+    const rows = modal.locator(`.track-row[data-source="${source}"]`);
+    for (const row of await rows.all()) {
+      expect(
+        await row.evaluate((element) =>
+          (element as HTMLElement).style.getPropertyValue('--source-color'),
+        ),
+      ).toBe(colors[source]);
+    }
+  }
+  await add('Muestra.wav');
+  await expect(modal.getByRole('alert')).toContainText('Este archivo ya está añadido');
+  await expect(modal.locator('.track-row')).toHaveCount(4);
+  await modal.getByRole('button', { name: 'Cerrar selector' }).click();
+  await modal.getByRole('button', { name: 'Retirar archivo Muestra.wav', exact: true }).click();
+  await expect(modal.locator('.track-row')).toHaveCount(3);
+  await expect(modal.locator('.track-row[data-source="1"] .track-source')).toContainText(
+    'Original.srt',
+  );
+  await add('Muestra.wav');
+  await expect(modal.locator('.source-chips > span')).toHaveCount(3);
+  await modal.getByLabel('Conservar pista 1 de Muestra.mkv', { exact: true }).uncheck();
+  const resultName = `Mezcla UI ${Date.now()}`;
+  await modal.getByLabel('Archivo de salida').fill(resultName);
+  await modal.locator('.source-chips').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/visual/multi-source-remux.png', fullPage: true });
+  await modal.getByRole('button', { name: 'Crear MKV', exact: true }).click();
+  await expect(
+    page.locator('mx-explorer[panelId="right"]').getByRole('row').filter({ hasText: resultName }),
+  ).toBeVisible();
+  const result = JSON.parse(
+    execFileSync('docker', ['exec', container!, 'mkvmerge', '-J', `/data/plex/${resultName}.mkv`], {
+      encoding: 'utf8',
+    }),
+  );
+  expect(result.tracks.map((track: { type: string }) => track.type)).toEqual([
+    'audio',
+    'subtitles',
+    'audio',
+  ]);
+});
+
+test('remux imports audio from another movie while leaving its video disabled', async ({
+  page,
+}) => {
+  await page
+    .locator('mx-explorer[panelId="left"]')
+    .getByRole('row')
+    .filter({ hasText: 'Pelicula.mkv' })
+    .dblclick();
+  const modal = page.getByRole('dialog');
+  await expect(modal.locator('.track-row')).toHaveCount(2);
+  await modal.getByRole('button', { name: 'Añadir archivo', exact: true }).click();
+  await modal
+    .locator('mx-explorer[panelId="picker"]')
+    .getByRole('row')
+    .filter({ hasText: 'Otra.mkv' })
+    .dblclick();
+  await expect(modal.locator('.track-row')).toHaveCount(4);
+  await expect(
+    modal.getByLabel('Conservar pista 0 de Otra.mkv', { exact: true }),
+  ).not.toBeChecked();
+  await expect(modal.getByLabel('Conservar pista 1 de Otra.mkv', { exact: true })).toBeChecked();
+  await modal.getByLabel('Conservar pista 1 de Pelicula.mkv', { exact: true }).uncheck();
+  await modal
+    .locator('.track-row[data-source="1"]')
+    .last()
+    .getByLabel('Nombre de pista', { exact: true })
+    .fill('Audio importado');
+  const resultName = `Audio de otra pelicula ${Date.now()}`;
+  await modal.getByLabel('Archivo de salida').fill(resultName);
+  await modal.locator('.source-chips').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/visual/movie-audio-remux.png', fullPage: true });
+  await modal.getByRole('button', { name: 'Crear MKV', exact: true }).click();
+  await expect(
+    page.locator('mx-explorer[panelId="right"]').getByRole('row').filter({ hasText: resultName }),
+  ).toBeVisible();
+  const result = JSON.parse(
+    execFileSync('docker', ['exec', container!, 'mkvmerge', '-J', `/data/plex/${resultName}.mkv`], {
+      encoding: 'utf8',
+    }),
+  );
+  expect(result.tracks.map((track: { type: string }) => track.type)).toEqual(['video', 'audio']);
+  expect(result.tracks[1].properties.track_name).toBe('Audio importado');
+});
+
 test('archive extraction uses visual destination picker and updates the other panel', async ({
   page,
 }) => {

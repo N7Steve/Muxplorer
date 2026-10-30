@@ -17,6 +17,7 @@ import { Explorer, Action } from './explorer';
 import { Icon } from './icon';
 import { Tracks, EditableTrack } from './tracks';
 import { orderAudio } from './audio-order';
+import { sourceColor } from './source-color';
 import { MediaInfoState, MediaInfoView } from './mediainfo';
 type Dialog =
   | 'mkdir'
@@ -77,6 +78,7 @@ export class AppComponent {
   readonly left = viewChild<Explorer>('left');
   readonly right = viewChild<Explorer>('right');
   readonly sources = signal<Media[]>([]);
+  readonly sourceColor = sourceColor;
   readonly tracks = signal<EditableTrack[]>([]);
   readonly disc = signal<Disc | null>(null);
   readonly discEngine = signal<'makemkv' | 'disc'>('makemkv');
@@ -376,6 +378,7 @@ export class AppComponent {
     if (current) void this.onAction({ ...current, action });
   }
   async addSource(location: Location) {
+    if (this.busy()) return;
     if (
       this.sources().some(
         (s) => s.location.root === location.root && s.location.path === location.path,
@@ -404,9 +407,10 @@ export class AppComponent {
       this.tracks.update((t) => {
         const combined = [
           ...t,
-          ...media.tracks
-            .filter((track) => index === 0 || track.type !== 'video')
-            .map((track) => editable(track, index, location.path.split('/').at(-1) ?? 'Origen')),
+          ...media.tracks.map((track) => ({
+            ...editable(track, index, location.path.split('/').at(-1) ?? 'Origen'),
+            enabled: index === 0 || track.type !== 'video',
+          })),
         ];
         return this.dialog() === 'metadata' ? combined : orderAudio(combined);
       });
@@ -425,8 +429,20 @@ export class AppComponent {
     }
   }
   choose(action: Action) {
-    if (action.action === 'choose' && action.entries[0])
+    if (this.picking() === 'external' && action.action === 'choose' && action.entries[0])
       void this.addSource(action.entries[0].location);
+  }
+  removeSource(index: number) {
+    if (this.busy() || index === 0) return;
+    this.sources.update((sources) => sources.filter((_, position) => position !== index));
+    this.tracks.update((tracks) =>
+      tracks
+        .filter((track) => track.source !== index)
+        .map((track) => ({
+          ...track,
+          source: track.source > index ? track.source - 1 : track.source,
+        })),
+    );
   }
   close() {
     if (this.busy() && !this.mediaOpening()) return;

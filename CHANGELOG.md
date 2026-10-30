@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.1.6
+
+- MKVToolNix permite añadir varios archivos desde el diálogo de remux y combinar sus pistas sin recodificar.
+- Archivos y pistas identificados por color, número y nombre de origen; retirada de fuentes adicionales y protección contra duplicados.
+- Las pistas de vídeo adicionales aparecen desmarcadas para facilitar añadir audios de otras películas.
+
 ## 0.1.5
 
 - Filas de pistas más compactas (64 px) y logos de hasta 80 × 40 px.

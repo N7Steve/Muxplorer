@@ -1518,11 +1518,11 @@ input[type='checkbox'] {
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
-  border: 1px solid #373246;
-  background: #252032;
+  border: 1px solid var(--source-color);
+  background: color-mix(in srgb, var(--source-color) 10%, #141924);
   border-radius: 5px;
   font-size: 11px;
-  color: #b09bcd;
+  color: var(--source-color);
   max-width: 100%;
   overflow-wrap: anywhere;
 }
@@ -1561,6 +1561,18 @@ input[type='checkbox'] {
 }
 .track-row:last-child {
   border-bottom: 0;
+}
+.track-row.source-colored {
+  border-left: 3px solid var(--source-color);
+  background: color-mix(in srgb, var(--source-color) 7%, #141924);
+}
+.track-description .track-source {
+  color: var(--source-color);
+  display: block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .track-row input:not([type='checkbox']) {
   margin-top: 0;

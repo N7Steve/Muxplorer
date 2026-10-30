@@ -14,6 +14,12 @@ Las pruebas usan archivos temporales y contenedores desechables con dos tmpfs in
 | Ambos YAML mediante `docker compose ... config --quiet` | Correctos                                                                                              |
 | Healthcheck del contenedor de pruebas                   | Estado healthy tras ejecutar operaciones y reiniciar el contenedor                                     |
 
+## Cambios 0.1.6 — 30 de octubre de 2026
+
+- Remux real desde navegador con tres fuentes: colores distintos y coincidentes entre archivos y pistas, rechazo de duplicados, retirada de una fuente intermedia y selección correcta después de renumerar los orígenes.
+- Vídeo de una película con audio de otra: el vídeo añadido comienza desmarcado, se conserva el vídeo principal y el MKV final contiene el audio importado con su nombre editado. Verificación mediante `mkvmerge -J` y capturas `test-results/visual/multi-source-remux.png` y `test-results/visual/movie-audio-remux.png`.
+- Compilación local de API y Angular, imagen Docker `muxplorer:0.1.6`, lint, tipos, formato y validación de ambos Compose. La imagen se construye con los cambios de esta versión, conservando fuera de la publicación las modificaciones locales previas de MakeMKV.
+
 ## Cambios 0.1.5
 
 - Editor de tags: edición real con `mkvpropedit`, mismo inode y hashes de audio/subtítulos extraídos idénticos antes y después. Rechazo de IDs desconocidos y revisión obsoleta. Navegador: editar título, nombre e idioma y guardar sobre el MKV original; filas de hasta 68 px en el fixture. Captura `test-results/visual/metadata-editor.png`.

@@ -4,6 +4,7 @@ import { DragDropModule, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-
 import type { TrackChoice, Track } from '@muxplorer/shared';
 import { Icon } from './icon';
 import { codecFlag, languageFlag } from './media-flags';
+import { sourceColor } from './source-color';
 export interface EditableTrack extends TrackChoice {
   metadata: Track;
   sourceName: string;
@@ -37,6 +38,9 @@ export interface EditableTrack extends TrackChoice {
                 cdkDrag
                 [cdkDragDisabled]="metadataOnly()"
                 [class.track-disabled]="!track.enabled"
+                [class.source-colored]="!metadataOnly()"
+                [style.--source-color]="sourceColor(track.source)"
+                [attr.data-source]="track.source"
               >
                 @if (!metadataOnly()) {
                   <div class="track-select">
@@ -59,6 +63,11 @@ export interface EditableTrack extends TrackChoice {
                   </div>
                   <div class="track-description">
                     <b>{{ track.metadata.codec }}</b>
+                    @if (!metadataOnly()) {
+                      <small class="track-source" [title]="track.sourceName">
+                        {{ track.source + 1 }} · {{ track.sourceName }}
+                      </small>
+                    }
                     <div class="track-codec-details">
                       @if (track.metadata.channels) {
                         <span
@@ -116,6 +125,7 @@ export class Tracks {
   readonly metadataOnly = input(false);
   readonly codecFlag = codecFlag;
   readonly languageFlag = languageFlag;
+  readonly sourceColor = sourceColor;
   readonly groups = [
     { type: 'video', label: 'Vídeo', icon: 'Film' },
     { type: 'audio', label: 'Audio', icon: 'FileAudio' },

@@ -59,7 +59,7 @@ Cada push a `main` ejecuta `.github/workflows/publish-image.yml`: valida el cód
 
 Para actualizar, vuelve a desplegar la app: `pull_policy: always` solicita la imagen actual al registro. No actualiza automáticamente un contenedor ya en ejecución. Para fijar una versión exacta o volver atrás, sustituye `latest` por una etiqueta `sha-...` de una publicación validada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.5 .`, exporta con `docker save -o muxplorer-0.1.5.tar muxplorer:0.1.5`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.5` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.6 .`, exporta con `docker save -o muxplorer-0.1.6.tar muxplorer:0.1.6`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.6` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -75,6 +75,10 @@ La aplicación se ejecuta como **1000:1000**, sin capabilities y con `no-new-pri
 En TrueNAS prepara las ACL para que esa identidad pueda listar, leer, crear, renombrar y eliminar en los dos datasets. Concede también escritura en `/config`. Las ACL de creación y herencia determinan el acceso posterior desde Plex/SMB; los archivos nuevos usan permisos conservadores y la app aplica umask 027. La app **no ejecuta chmod/chown recursivos sobre los datasets** ni fuerza permisos para eludir las ACL.
 
 Un volumen nuevo de `/config` se inicializa desde la imagen con propietario 1000:1000. Si eliges otro UID, prepara ese volumen con el propietario/ACL adecuados antes de arrancar. También puedes sustituir únicamente el volumen de configuración por un dataset de aplicaciones con ACL preparadas. No cambies permisos del árbol multimedia como parte de la instalación.
+
+## Mezclar pistas con MKVToolNix
+
+Abre un archivo con MKVToolNix y pulsa **Añadir archivo** para incorporar dos o más fuentes. Cada archivo y sus pistas comparten un color y un número de origen. Puedes combinar el vídeo de una película con audios o subtítulos de otras, desmarcar pistas, reordenarlas y retirar archivos añadidos. El vídeo de las fuentes adicionales comienza desmarcado. Los originales se conservan.
 
 ## ISO y BDMV con MakeMKV
 
@@ -164,7 +168,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.5 .
+docker build -t muxplorer:0.1.6 .
 pnpm test:docker
 pnpm exec playwright install chromium
 pnpm test:acceptance
