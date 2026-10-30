@@ -13,6 +13,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import type { Location } from '@muxplorer/shared';
 import { interval, map, merge, takeUntil, takeWhile } from 'rxjs';
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
@@ -140,7 +141,9 @@ export class ApiController implements OnModuleInit {
     );
   }
   @Post('media/inspect') inspect(@Body() body: unknown) {
-    return this.mkv.inspect(contract.parse(contract.location, body));
+    const location = contract.parse(contract.location, body);
+    this.assertMediaAvailable(location);
+    return this.mkv.inspect(location);
   }
   @Post('media/remux') remux(@Body() body: unknown) {
     const data = contract.parse(contract.remux, body);
@@ -148,19 +151,22 @@ export class ApiController implements OnModuleInit {
   }
   @Post('media/metadata') metadata(@Body() body: unknown) {
     const data = contract.parse(contract.metadata, body);
+    this.assertMediaAvailable(data.source);
+    return this.mkv.editMetadata(data);
+  }
+  private assertMediaAvailable(location: Location) {
     if (
       this.jobs
         .list()
         .some(
           (job) =>
             ['pending', 'running'].includes(job.status) &&
-            job.sources.some(
-              (source) => source.root === data.source.root && source.path === data.source.path,
+            [...job.sources, ...job.results].some((source) =>
+              this.files.overlaps(source, location),
             ),
         )
     )
       problem('Espera a que terminen las operaciones que usan este archivo.');
-    return this.mkv.editMetadata(data);
   }
   @Post('makemkv/inspect') disc(@Body() body: unknown) {
     return this.make.inspect(contract.parse(contract.location, body));
@@ -231,7 +237,7 @@ export class ApiController implements OnModuleInit {
     const job = this.jobs.get(id);
     if (!['completed', 'failed', 'cancelled'].includes(job.status))
       problem('Termina o cancela la operación antes de retirarla.');
-    if (job.destination) await this.files.exclusive(() => this.files.cleanup(job.destination!, id));
+    if (job.destination) await this.files.cleanup(job.destination, id);
     if (job.kind === 'disc') await this.discs.cleanupPreparation(job.sources[0], id);
     this.jobs.markCleaned(id);
     return this.jobs.dismiss(id);
@@ -245,6 +251,7 @@ export class ApiController implements OnModuleInit {
               z
                 .object({
                   index: z.number().int().nonnegative(),
+                  title: z.string().max(512).optional(),
                   name: z
                     .string()
                     .max(240)
@@ -269,8 +276,7 @@ export class ApiController implements OnModuleInit {
     const job = this.jobs.get(id);
     if (['running', 'pending'].includes(job.status))
       problem('Cancela el trabajo antes de limpiar.');
-    if (job.destination)
-      await this.files.exclusive(() => this.files.cleanup(job.destination!, job.id));
+    if (job.destination) await this.files.cleanup(job.destination, job.id);
     if (job.kind === 'disc') await this.discs.cleanupPreparation(job.sources[0], job.id);
     this.jobs.markCleaned(id);
     return { ok: true };

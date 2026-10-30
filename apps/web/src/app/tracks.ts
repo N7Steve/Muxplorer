@@ -27,7 +27,7 @@ export interface EditableTrack extends TrackChoice {
             @if (!metadataOnly()) {
               <span></span>
             }
-            <span>Pista / códec</span><span>Logo</span><span>Nombre</span><span>Idioma</span
+            <span>Pista / códec</span><span>Idioma</span><span>Nombre</span
             ><span title="Predeterminada">Default</span><span title="Forzada">Forced</span>
           </div>
           <div cdkDropList (cdkDropListDropped)="drop($event, group.type)">
@@ -49,33 +49,29 @@ export interface EditableTrack extends TrackChoice {
                     />
                   </div>
                 }
-                <div class="track-description">
-                  <b>{{ track.metadata.codec }}</b>
-                  <div class="track-codec-details">
-                    @if (track.metadata.channels) {
-                      <span
-                        >{{ track.metadata.channels }}
-                        {{ track.metadata.channels === 1 ? 'canal' : 'canales' }}</span
-                      >
-                    }
-                    @if (track.metadata.resolution) {
-                      <span>{{ track.metadata.resolution }}</span>
+                <div class="track-codec">
+                  <div class="track-codec-logo">
+                    @if (codecFlag(track.metadata); as flag) {
+                      <img class="codec-flag" [src]="flag" [alt]="track.metadata.codec" />
+                    } @else {
+                      <mx-icon [name]="group.icon" [size]="24" />
                     }
                   </div>
+                  <div class="track-description">
+                    <b>{{ track.metadata.codec }}</b>
+                    <div class="track-codec-details">
+                      @if (track.metadata.channels) {
+                        <span
+                          >{{ track.metadata.channels }}
+                          {{ track.metadata.channels === 1 ? 'canal' : 'canales' }}</span
+                        >
+                      }
+                      @if (track.metadata.resolution) {
+                        <span>{{ track.metadata.resolution }}</span>
+                      }
+                    </div>
+                  </div>
                 </div>
-                <div class="track-codec-logo">
-                  @if (codecFlag(track.metadata); as flag) {
-                    <img class="codec-flag" [src]="flag" [alt]="track.metadata.codec" />
-                  } @else {
-                    <mx-icon [name]="group.icon" [size]="24" />
-                  }
-                </div>
-                <input
-                  [(ngModel)]="track.name"
-                  placeholder="Nombre de pista"
-                  [disabled]="!track.enabled"
-                  aria-label="Nombre de pista"
-                />
                 <div class="track-language">
                   @if (languageFlag(track.language); as flag) {
                     <img class="language-flag" [src]="flag" alt="" [title]="track.language" />
@@ -90,6 +86,12 @@ export interface EditableTrack extends TrackChoice {
                     maxlength="35"
                   />
                 </div>
+                <input
+                  [(ngModel)]="track.name"
+                  placeholder="Nombre de pista"
+                  [disabled]="!track.enabled"
+                  aria-label="Nombre de pista"
+                />
                 <input
                   type="checkbox"
                   [(ngModel)]="track.default"

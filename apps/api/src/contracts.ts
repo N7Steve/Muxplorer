@@ -48,6 +48,7 @@ export const make = z
     destination: location,
     titles: z.array(z.number().int().min(0).max(99999)).min(1).max(100),
     name: z.string().min(1).max(220),
+    title: z.string().max(512).optional(),
   })
   .strict();
 export const fileOperation = z

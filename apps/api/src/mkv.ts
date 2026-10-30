@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { rm, lstat } from 'node:fs/promises';
 import { z } from 'zod';
 import type { Media, MetadataRequest, RemuxRequest, Track } from '@muxplorer/shared';
-import { Paths, safeName } from './paths';
+import { Paths, safeName, childLocation } from './paths';
 import { Files } from './files';
 import { Processes } from './process';
 import { config } from './config';
@@ -172,7 +172,7 @@ export class Mkv {
     return parseMkv(result.stdout);
   }
   async inspect(location: Media['location']): Promise<Media> {
-    return this.files.exclusive(async () => {
+    return this.files.exclusive([location], async () => {
       const absolute = await this.paths.file(location);
       const revision = await fileRevision(absolute);
       const media = await this.inspectAbsolute(absolute);
@@ -182,7 +182,7 @@ export class Mkv {
     });
   }
   async editMetadata(request: MetadataRequest) {
-    return this.files.exclusive(async () => {
+    return this.files.exclusive([request.source], async () => {
       if (!/\.mkv$/i.test(request.source.path)) problem('Selecciona un archivo MKV.');
       const absolute = await this.paths.file(request.source);
       await this.paths.tree(absolute);
@@ -269,7 +269,7 @@ export class Mkv {
       await this.runAbsolute(request, sourcePaths, output, context);
       context.signal.throwIfAborted();
       context.result(
-        await this.files.exclusive(() =>
+        await this.files.exclusive([childLocation(request.destination, request.name)], () =>
           this.files.publish(output, request.destination, request.name),
         ),
       );

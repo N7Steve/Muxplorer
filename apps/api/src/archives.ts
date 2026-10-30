@@ -124,7 +124,10 @@ export class Archives {
       }
       context.signal.throwIfAborted();
       context.update('Esperando para publicar los archivos extraídos');
-      await this.files.exclusive(async () => {
+      const publication = request.folder
+        ? [childLocation(request.destination, request.folder)]
+        : (await readdir(contents)).map((name) => childLocation(request.destination, name));
+      await this.files.exclusive(publication, async () => {
         context.signal.throwIfAborted();
         context.update('Publicando los archivos extraídos');
         if (request.folder) {

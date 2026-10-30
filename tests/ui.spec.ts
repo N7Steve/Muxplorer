@@ -12,7 +12,7 @@ test('authenticated explorer performs real folder operations and displays custom
     .getByLabel('Contraseña de administrador')
     .fill(process.env.MUXPLORER_TEST_PASSWORD ?? 'Muxplorer-test-password-2026');
   await page.getByRole('button', { name: 'Entrar en Muxplorer' }).click();
-  await expect(page.getByRole('heading', { name: 'Explorador de archivos.' })).toBeVisible();
+  await expect(page.locator('.panels')).toBeVisible();
   const left = page.locator('mx-explorer[panelId="left"]');
   await expect(left.getByRole('grid', { name: 'Archivos' })).toBeVisible();
   await page.getByRole('button', { name: 'Nueva carpeta', exact: true }).first().click();

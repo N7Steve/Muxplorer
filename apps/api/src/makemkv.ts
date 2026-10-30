@@ -15,8 +15,9 @@ export interface MakeRequest {
   destination: Location;
   titles: number[];
   name: string;
+  title?: string;
   checkpoint?: { files: { title: number; relative: string; name: string }[] };
-  review?: { index: number; tracks: TrackChoice[]; name: string }[];
+  review?: { index: number; tracks: TrackChoice[]; name: string; title?: string }[];
 }
 // Robot fields use C-style backslash escaping, not RFC CSV quoting.
 export function robotFields(line: string): string[] {
@@ -285,6 +286,7 @@ export class MakeMkv implements OnModuleInit {
         checkpoint.files.map(async (file, index) => ({
           index,
           name: file.name,
+          title: request.title ?? request.name.replace(/\.mkv$/i, ''),
           tracks: (await this.mkv.inspectAbsolute(path.join(staging, file.relative))).tracks,
         })),
       );
@@ -313,14 +315,20 @@ export class MakeMkv implements OnModuleInit {
         const remux: RemuxRequest = {
           sources: [request.source],
           tracks: selected.tracks,
-          title: request.name,
+          title: selected.title ?? request.title ?? request.name.replace(/\.mkv$/i, ''),
           destination: request.destination,
           name: selected.name,
         };
         await this.mkv.runAbsolute(remux, [input], output, context);
         context.result(
-          await this.files.exclusive(() =>
-            this.files.publish(output, request.destination, selected.name),
+          await this.files.exclusive(
+            [
+              {
+                ...request.destination,
+                path: [request.destination.path, selected.name].filter(Boolean).join('/'),
+              },
+            ],
+            () => this.files.publish(output, request.destination, selected.name),
           ),
         );
       }

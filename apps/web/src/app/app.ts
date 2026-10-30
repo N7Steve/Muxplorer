@@ -16,6 +16,7 @@ import { Api, bytes, displayLocation } from './api';
 import { Explorer, Action } from './explorer';
 import { Icon } from './icon';
 import { Tracks, EditableTrack } from './tracks';
+import { orderAudio } from './audio-order';
 type Dialog =
   | 'mkdir'
   | 'rename'
@@ -55,12 +56,16 @@ export class AppComponent {
   readonly configured = signal(true);
   readonly starting = signal(true);
   readonly busy = signal(false);
+  readonly mediaOpening = signal(false);
+  private openingRequest?: AbortController;
   readonly error = signal('');
   password = '';
   username = '';
   readonly adminName = signal('');
   readonly active = signal<'left' | 'right'>('left');
   readonly jobsOpen = signal(false);
+  readonly profileOpen = signal(false);
+  readonly expandedJobs = signal<Set<string>>(new Set());
   readonly dialog = signal<Dialog>(null);
   readonly context = signal<Action | null>(null);
   readonly currentAction = signal<Action | null>(null);
@@ -81,10 +86,28 @@ export class AppComponent {
       ? (this.preparation()?.awaitingDisc ?? null)
       : this.disc(),
   );
+  readonly mediaLoading = computed(
+    () =>
+      this.mediaOpening() ||
+      (this.dialog() === 'disc' &&
+        this.discEngine() === 'disc' &&
+        !!this.discPreparationId() &&
+        !this.discContent() &&
+        !this.error() &&
+        (!this.preparation() || ['pending', 'running'].includes(this.preparation()!.status))),
+  );
+  readonly mediaLoadFailed = computed(
+    () =>
+      !this.mediaLoading() &&
+      ((['metadata', 'remux'].includes(this.dialog() ?? '') && !this.sources().length) ||
+        (this.dialog() === 'disc' && !this.discContent())),
+  );
   readonly visibleJobs = computed(() => this.api.jobs().filter((job) => !job.dismissed));
   readonly selectedTitles = signal<Set<number>>(new Set());
   readonly reviewJob = signal<Job | null>(null);
-  readonly reviewFiles = signal<{ index: number; name: string; tracks: EditableTrack[] }[]>([]);
+  readonly reviewFiles = signal<
+    { index: number; name: string; title: string; tracks: EditableTrack[] }[]
+  >([]);
   readonly selectedJob = signal<string | null>(null);
   private clipboard: { entries: Entry[]; kind: 'copy' | 'move' } | null = null;
   name = '';
@@ -172,6 +195,7 @@ export class AppComponent {
     await this.api.request('auth/logout', {});
     this.api.disconnect();
     this.authenticated.set(false);
+    this.profileOpen.set(false);
   }
   panel() {
     return this.active() === 'left' ? this.left() : this.right();
@@ -216,12 +240,26 @@ export class AppComponent {
     if (action.action === 'context') {
       this.context.set({
         ...action,
-        x: Math.min(action.x ?? 0, window.innerWidth - 250),
-        y: Math.min(action.y ?? 0, window.innerHeight - 390),
+        x: Math.max(8, Math.min(action.x ?? 0, window.innerWidth - 300)),
+        y: Math.max(8, Math.min(action.y ?? 0, window.innerHeight - 390)),
       });
       return;
     }
     this.context.set(null);
+    if (['copy-other', 'move-other'].includes(action.action) && action.entries.length) {
+      try {
+        await this.api.request('files/operation', {
+          kind: action.action === 'copy-other' ? 'copy' : 'move',
+          sources: action.entries.map((entry) => entry.location),
+          destination: this.otherPanel()!.location(),
+        });
+        this.api.toast('Transferencia añadida a operaciones');
+        await this.api.syncJobs();
+      } catch (error) {
+        this.api.toast(error);
+      }
+      return;
+    }
     if (action.action.startsWith('clipboard-')) {
       this.clipboard = {
         entries: action.entries,
@@ -275,32 +313,39 @@ export class AppComponent {
       this.name = action.entries[0].name.replace(/\.[^.]+$/, '') + '.remux';
       this.dialog.set(action.action === 'metadata' ? 'metadata' : 'remux');
       await this.addSource(action.entries[0].location);
-    } else if (['disc', 'disc-mkvtoolnix'].includes(action.action) && action.entries.length === 1) {
-      this.discEngine.set(action.action === 'disc' ? 'makemkv' : 'disc');
+    } else if (action.action === 'disc' && action.entries.length === 1) {
+      this.discEngine.set('makemkv');
       this.disc.set(null);
       this.selectedTitles.set(new Set());
-      this.name = action.entries[0].name.replace(/\.[^.]+$/, '') || 'pelicula';
+      const parts = action.entries[0].location.path.split('/');
+      if (/^index\.bdmv$/i.test(parts.at(-1) ?? '')) {
+        parts.pop();
+        if (parts.at(-1)?.toLowerCase() === 'bdmv') parts.pop();
+        this.name = parts.at(-1) || 'pelicula';
+      } else this.name = action.entries[0].name.replace(/\.[^.]+$/, '') || 'pelicula';
+      this.title = this.name;
       this.dialog.set('disc');
       this.discPreparationId.set(null);
-      if (this.discEngine() === 'disc') {
-        try {
-          const job = await this.api.request<Job>('disc/prepare', action.entries[0].location);
-          this.discPreparationId.set(job.id);
-          await this.api.syncJobs();
-        } catch (error) {
-          this.error.set(this.message(error));
-        }
-        return;
-      }
+      this.mediaOpening.set(true);
       this.busy.set(true);
+      const opening = new AbortController();
+      this.openingRequest = opening;
       try {
         this.disc.set(
-          await this.api.request<Disc>(`${this.discEngine()}/inspect`, action.entries[0].location),
+          await this.api.request<Disc>(
+            `${this.discEngine()}/inspect`,
+            action.entries[0].location,
+            AbortSignal.any([opening.signal, AbortSignal.timeout(610_000)]),
+          ),
         );
       } catch (error) {
-        this.error.set(this.message(error));
+        if (!opening.signal.aborted) this.error.set(this.message(error));
       } finally {
-        this.busy.set(false);
+        if (this.openingRequest === opening) {
+          this.openingRequest = undefined;
+          this.busy.set(false);
+          this.mediaOpening.set(false);
+        }
       }
     }
   }
@@ -319,22 +364,42 @@ export class AppComponent {
     }
     this.busy.set(true);
     this.error.set('');
+    const initial = !this.sources().length;
+    const opening = initial ? new AbortController() : undefined;
+    if (opening) {
+      this.openingRequest = opening;
+      this.mediaOpening.set(true);
+    }
     try {
-      const media = await this.api.request<Media>('media/inspect', location);
+      const media = await this.api.request<Media>(
+        'media/inspect',
+        location,
+        opening ? AbortSignal.any([opening.signal, AbortSignal.timeout(130_000)]) : undefined,
+      );
+      opening?.signal.throwIfAborted();
       const index = this.sources().length;
       this.sources.update((s) => [...s, media]);
-      this.tracks.update((t) => [
-        ...t,
-        ...media.tracks
-          .filter((track) => index === 0 || track.type !== 'video')
-          .map((track) => editable(track, index, location.path.split('/').at(-1) ?? 'Origen')),
-      ]);
+      this.tracks.update((t) => {
+        const combined = [
+          ...t,
+          ...media.tracks
+            .filter((track) => index === 0 || track.type !== 'video')
+            .map((track) => editable(track, index, location.path.split('/').at(-1) ?? 'Origen')),
+        ];
+        return this.dialog() === 'metadata' ? combined : orderAudio(combined);
+      });
       if (index === 0) this.title = media.title;
       this.picking.set(null);
     } catch (error) {
-      this.error.set(this.message(error));
+      if (!opening?.signal.aborted) this.error.set(this.message(error));
     } finally {
-      this.busy.set(false);
+      if (!opening || this.openingRequest === opening) {
+        this.busy.set(false);
+        if (opening) {
+          this.openingRequest = undefined;
+          this.mediaOpening.set(false);
+        }
+      }
     }
   }
   choose(action: Action) {
@@ -342,7 +407,11 @@ export class AppComponent {
       void this.addSource(action.entries[0].location);
   }
   close() {
-    if (this.busy()) return;
+    if (this.busy() && !this.mediaOpening()) return;
+    this.openingRequest?.abort();
+    this.openingRequest = undefined;
+    this.mediaOpening.set(false);
+    this.busy.set(false);
     this.dialog.set(null);
     this.picking.set(null);
     this.error.set('');
@@ -403,7 +472,7 @@ export class AppComponent {
           break;
         case 'delete':
           await this.api.request('files/operation', { kind: 'delete', sources, confirmed: true });
-          message = 'Eliminación añadida a operaciones';
+          message = 'Eliminación iniciada';
           break;
         case 'transfer':
           await this.api.request('files/operation', {
@@ -440,6 +509,7 @@ export class AppComponent {
               destination: this.destination(),
               titles: [...this.selectedTitles()],
               name: this.name,
+              title: this.title,
             });
           } else
             await this.api.request(`${this.discEngine()}/convert`, {
@@ -447,6 +517,7 @@ export class AppComponent {
               destination: this.destination(),
               titles: [...this.selectedTitles()],
               name: this.name,
+              title: this.title,
             });
           message = 'Disco añadido. Podrás revisar las pistas tras la extracción.';
           break;
@@ -455,6 +526,7 @@ export class AppComponent {
             files: this.reviewFiles().map((f) => ({
               index: f.index,
               name: mkvName(f.name),
+              title: f.title,
               tracks: this.choices(f.tracks),
             })),
           });
@@ -488,7 +560,8 @@ export class AppComponent {
       (job.awaitingReview ?? []).map((f) => ({
         ...f,
         name: f.name.replace(/\.mkv$/i, ''),
-        tracks: f.tracks.map((t) => editable(t, 0, f.name)),
+        title: f.title ?? f.name.replace(/\.mkv$/i, ''),
+        tracks: orderAudio(f.tracks.map((t) => editable(t, 0, f.name))),
       })),
     );
     this.error.set('');
@@ -500,6 +573,14 @@ export class AppComponent {
         ? this.reviewFiles().flatMap((file) => file.tracks)
         : this.tracks();
     for (const track of tracks) track.name = '';
+  }
+  toggleJob(job: Job) {
+    this.expandedJobs.update((ids) => {
+      const next = new Set(ids);
+      if (next.has(job.id)) next.delete(job.id);
+      else next.add(job.id);
+      return next;
+    });
   }
   openDisc(job: Job) {
     this.jobsOpen.set(false);
@@ -564,6 +645,7 @@ export class AppComponent {
   @HostListener('document:keydown', ['$event']) keyboard(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       this.context.set(null);
+      this.profileOpen.set(false);
       if (this.picking()) this.picking.set(null);
       else if (this.dialog()) this.close();
       else this.jobsOpen.set(false);

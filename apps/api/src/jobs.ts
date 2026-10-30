@@ -188,9 +188,17 @@ export class Jobs implements OnModuleDestroy {
   private drain(forcedId?: string) {
     if (this.stopped) return;
     const queued = this.scheduled();
-    if (forcedId) queued.sort((a, b) => Number(b.id === forcedId) - Number(a.id === forcedId));
+    queued.sort(
+      (a, b) =>
+        Number(b.kind === 'delete') - Number(a.kind === 'delete') ||
+        Number(b.id === forcedId) - Number(a.id === forcedId),
+    );
     for (const job of queued) {
-      if (job.id !== forcedId && this.running.size >= config.JOB_CONCURRENCY) continue;
+      const regularRunning = [...this.active.values()].filter(
+        (item) => item.kind !== 'delete',
+      ).length;
+      if (job.kind !== 'delete' && job.id !== forcedId && regularRunning >= config.JOB_CONCURRENCY)
+        continue;
       if (
         job.status !== 'pending' ||
         job.awaitingReview ||

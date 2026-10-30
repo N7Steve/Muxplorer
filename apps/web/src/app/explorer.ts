@@ -189,7 +189,17 @@ export class Explorer {
   open(entry: Entry) {
     if (entry.kind === 'directory') this.navigate(entry.location);
     else if (this.filePicker()) this.emit('choose', [entry]);
-    else if (entry.kind === 'file') this.emit('properties', [entry]);
+    else if (entry.kind === 'file') {
+      const action =
+        /\.iso$/i.test(entry.name) || /^index\.bdmv$/i.test(entry.name)
+          ? 'disc'
+          : /\.(mkv|mp4|avi|mov|webm|m2ts|ts|flac|ac3|aac|dts|mp3|wav|srt|ass|ssa|sup|m4a)$/i.test(
+                entry.name,
+              )
+            ? 'remux'
+            : 'properties';
+      this.emit(action, [entry]);
+    }
   }
   context(event: MouseEvent, entry?: Entry) {
     event.preventDefault();

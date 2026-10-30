@@ -60,12 +60,14 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
       processes = new FakeMakeProcess(),
       files = new Files(paths, processes);
     let finalChoices: RemuxRequest['tracks'] = [];
+    let finalTitle = '';
     class FakeMkv extends Mkv {
       override async inspectAbsolute() {
         return { title: '', tracks: generated };
       }
       override async runAbsolute(request: RemuxRequest, _paths: string[], output: string) {
         finalChoices = request.tracks;
+        finalTitle = request.title;
         await writeFile(output, 'verified remux result');
       }
     }
@@ -88,9 +90,12 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
       destination: { root: 'plex', path: '' },
       titles: [3],
       name: 'Movie',
+      title: 'Disc title',
     };
     await assert.rejects(engine.convert(request, context), (error) => {
       assert.ok(error instanceof NeedsReview);
+      assert.equal(error.files[0].name, 'Movie.mkv');
+      assert.equal(error.files[0].title, 'Disc title');
       assert.deepEqual(
         error.files[0].tracks.map((t) => t.id),
         [37, 12],
@@ -106,7 +111,8 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
         review: [
           {
             index: 0,
-            name: 'Movie.mkv',
+            name: 'Renamed Movie.mkv',
+            title: 'Final MKV title',
             tracks: [
               {
                 source: 0,
@@ -124,10 +130,14 @@ test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes
       context,
     );
     assert.equal(finalChoices[0].id, 37);
-    assert.deepEqual(results, ['Movie.mkv']);
-    assert.equal(await readFile(path.join(plex, 'Movie.mkv'), 'utf8'), 'verified remux result');
+    assert.equal(finalTitle, 'Final MKV title');
+    assert.deepEqual(results, ['Renamed Movie.mkv']);
+    assert.equal(
+      await readFile(path.join(plex, 'Renamed Movie.mkv'), 'utf8'),
+      'verified remux result',
+    );
     assert.equal(await readFile(path.join(downloads, 'disc.iso'), 'utf8'), 'ISO fixture');
-    assert.deepEqual(await readdir(plex), ['Movie.mkv']);
+    assert.deepEqual(await readdir(plex), ['Renamed Movie.mkv']);
   } finally {
     config.MAKEMKV_HOME = previousHome;
     await rm(temporary, { recursive: true, force: true });

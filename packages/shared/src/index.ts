@@ -82,6 +82,7 @@ export interface Disc {
 export interface ReviewFile {
   index: number;
   name: string;
+  title?: string;
   tracks: Track[];
 }
 export interface Job {

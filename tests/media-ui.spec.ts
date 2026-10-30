@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Nombre de usuario').fill('mux-admin');
   await page.getByLabel('Contraseña de administrador').fill('Muxplorer-test-password-2026');
   await page.getByRole('button', { name: 'Entrar en Muxplorer' }).click();
-  await expect(page.getByRole('heading', { name: 'Explorador de archivos.' })).toBeVisible();
+  await expect(page.locator('.panels')).toBeVisible();
 });
 test('all media engines are available automatically without an extra MakeMKV setup screen', async ({
   page,
@@ -57,7 +57,7 @@ test('all media engines are available automatically without an extra MakeMKV set
   await expect(modal.getByText('MakeMKV requiere instalación', { exact: false })).toHaveCount(0);
   await page.screenshot({ path: 'test-results/visual/tools.png', fullPage: true });
 });
-test('desktop explorer, multimedia context menus and exact external-track selection work', async ({
+test('desktop explorer opens MKVToolNix on double click and remuxes selected tracks', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -68,16 +68,11 @@ test('desktop explorer, multimedia context menus and exact external-track select
   await expect(page.locator('.panels')).toHaveCSS('display', 'flex');
   await sample.click();
   await page.screenshot({ path: 'test-results/visual/explorer.png', fullPage: true });
-  await sample.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Abrir con MKVToolNix' }).click();
+  await sample.dblclick();
   const modal = page.getByRole('dialog');
   await expect(modal.locator('.track-row')).toHaveCount(2);
-  await modal.getByRole('button', { name: 'Añadir audio o subtítulos' }).click();
-  const picker = page.locator('mx-explorer[panelId="picker"]');
-  await picker.getByLabel('Raíz de almacenamiento').selectOption('downloads');
-  await picker.getByRole('row').filter({ hasText: 'Subtítulos' }).dblclick();
-  await picker.getByRole('row').filter({ hasText: 'Castellano.srt' }).dblclick();
-  await expect(modal.locator('.track-row')).toHaveCount(3);
+  await expect(modal.getByRole('button', { name: 'Añadir audio o subtítulos' })).toHaveCount(0);
+  await expect(modal.getByRole('heading', { name: 'Muestra.mkv' })).toBeVisible();
   await modal.getByLabel('Título del MKV').fill('Prueba desde el navegador');
   const resultName = `Resultado UI ${Date.now()}.mkv`;
   await modal.getByLabel('Archivo de salida').fill(resultName.replace(/\.mkv$/, ''));
@@ -108,6 +103,108 @@ test('archive extraction uses visual destination picker and updates the other pa
   await expect(
     page.locator('mx-explorer[panelId="right"]').getByRole('row').filter({ hasText: folderName }),
   ).toBeVisible();
+});
+
+for (const action of ['Editar tags sin remuxear', 'Abrir con MKVToolNix']) {
+  test(`${action} waits for all properties before revealing the form`, async ({ page }) => {
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/media/inspect', async (route) => {
+      const response = await route.fetch();
+      await ready;
+      await route.fulfill({ response });
+    });
+    const left = page.locator('mx-explorer[panelId="left"]');
+    await left.getByRole('row').filter({ hasText: 'Muestra.mkv' }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: action, exact: true }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal.getByText('Cargando propiedades…', { exact: true })).toBeVisible();
+    await expect(modal.locator('.modal-body, .track-row')).toHaveCount(0);
+    await expect(modal.getByRole('button', { name: /Guardar tags|Crear MKV/ })).toHaveCount(0);
+    await expect(page.locator('.modal-backdrop')).toHaveCSS('opacity', '1');
+    await page.screenshot({
+      path: `test-results/visual/loader-${action.startsWith('Editar') ? 'tags' : 'remux'}.png`,
+    });
+    release();
+    await expect(modal.locator('.track-row')).toHaveCount(2);
+    await expect(modal.locator('.modal-loader')).toHaveCount(0);
+    await expect(modal.locator('.modal-body')).toHaveCSS('animation-name', 'modal-reveal');
+    if (action.startsWith('Editar')) {
+      await expect(modal.locator('.modal-body')).toHaveCSS('opacity', '1');
+      await page.screenshot({ path: 'test-results/visual/properties-ready.png' });
+    }
+  });
+}
+
+test('property loading can be cancelled and errors never reveal a partial form', async ({
+  page,
+}) => {
+  let fail = false;
+  await page.route('**/api/media/inspect', async (route) => {
+    if (fail)
+      await route.fulfill({
+        status: 400,
+        json: { message: 'Espera a que terminen las operaciones que usan este archivo.' },
+      });
+    // Leave the first request pending until the user cancels it.
+  });
+  const row = page
+    .locator('mx-explorer[panelId="left"]')
+    .getByRole('row')
+    .filter({ hasText: 'Muestra.mkv' });
+  const open = async () => {
+    await row.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Editar tags sin remuxear' }).click();
+  };
+  await open();
+  const modal = page.getByRole('dialog');
+  await expect(modal.locator('.modal-loader')).toBeVisible();
+  await modal.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(modal).toHaveCount(0);
+  fail = true;
+  await open();
+  await expect(modal.getByRole('alert')).toContainText('Espera a que terminen');
+  await expect(modal.getByRole('textbox')).toHaveCount(0);
+  await expect(modal.getByRole('button', { name: 'Guardar tags' })).toHaveCount(0);
+  await modal.getByRole('button', { name: 'Cerrar', exact: true }).click();
+});
+
+test('MakeMKV hides the disc form until its analysis finishes', async ({ page }) => {
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/makemkv/inspect', async (route) => {
+    await ready;
+    await route.fulfill({
+      json: {
+        location: { root: 'downloads', path: 'Disc fixture/BDMV/index.bdmv' },
+        titles: [
+          {
+            id: 0,
+            name: 'Película de prueba',
+            duration: '00:02:05',
+            size: '10 MB',
+            chapters: 1,
+            streams: [],
+          },
+        ],
+      },
+    });
+  });
+  const left = page.locator('mx-explorer[panelId="left"]');
+  await left.getByRole('row').filter({ hasText: 'Disc fixture' }).dblclick();
+  await left.getByRole('row').filter({ hasText: /^BDMV/ }).dblclick();
+  await left.getByRole('row').filter({ hasText: 'index.bdmv' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Abrir con MakeMKV', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await expect(modal.getByText('Analizando el disco…', { exact: true })).toBeVisible();
+  await expect(modal.locator('.modal-body, .destination-card')).toHaveCount(0);
+  release();
+  await expect(modal.getByText('Película de prueba', { exact: true })).toBeVisible();
+  await expect(modal.locator('.destination-card')).toBeVisible();
 });
 
 test('MKV metadata editor saves track names, languages and flags in place without a remux job', async ({
@@ -223,7 +320,7 @@ test('progress follows HTTP snapshots even when the SSE connection stays open wi
   await expect(job.getByText('46%', { exact: true })).toBeVisible({ timeout: 7000 });
 });
 
-test('disc context menu offers both MKVToolNix and MakeMKV', async ({ page }) => {
+test('BDMV context menu offers only MakeMKV and double click uses it', async ({ page }) => {
   const left = page.locator('mx-explorer[panelId="left"]');
   await left.getByRole('row').filter({ hasText: 'Disc fixture' }).dblclick();
   await left.getByRole('row').filter({ hasText: /^BDMV/ }).dblclick();
@@ -231,40 +328,48 @@ test('disc context menu offers both MKVToolNix and MakeMKV', async ({ page }) =>
   await expect(
     page.getByRole('menuitem', { name: 'Abrir con MakeMKV', exact: true }),
   ).toBeVisible();
-  await page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }).click();
+  await expect(
+    page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await left.getByRole('row').filter({ hasText: 'index.bdmv' }).dblclick();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Lista 00000.mpls', { exact: true })).toBeVisible();
-  await expect(modal.getByText('00:02:05', { exact: true })).toBeVisible();
-  await expect(modal.getByText('MKVTOOLNIX', { exact: true })).toBeVisible();
+  await expect(modal.getByText('MAKEMKV', { exact: true })).toBeVisible();
+  await expect(modal.getByLabel('Nombre base de salida')).toHaveValue('Disc fixture');
+  await expect(modal.getByLabel('Título del MKV')).toHaveValue('Disc fixture');
 });
 
-test('ISO preparation runs in background, reopens, edits track names and dismisses the completed operation', async ({
+test('MakeMKV ISO flow preserves filename and title, edits tracks and collapses completed operations', async ({
   page,
 }) => {
   const left = page.locator('mx-explorer[panelId="left"]');
   await left.getByRole('row').filter({ hasText: 'Disc fixture' }).dblclick();
   await left.getByRole('row').filter({ hasText: 'bluray.iso' }).click({ button: 'right' });
-  const queuedResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/api/disc/prepare'),
-  );
-  await page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }).click();
-  const queued = await (await queuedResponse).json();
-  await page.getByRole('button', { name: 'Continuar en segundo plano', exact: true }).click();
-  const drawer = page.getByRole('complementary', { name: 'Panel de operaciones' });
-  const card = drawer.locator(`[data-job-id="${queued.id}"]`);
-  await card.getByRole('button', { name: 'Elegir títulos', exact: true }).click({ timeout: 10000 });
+  await expect(
+    page.getByRole('menuitem', { name: 'Abrir con MKVToolNix', exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await left.getByRole('row').filter({ hasText: 'bluray.iso' }).dblclick();
   const modal = page.getByRole('dialog');
-  await expect(drawer).toHaveCount(0);
   await modal.locator('.disc-title input[type="checkbox"]').first().check();
   const base = `Plex review ${Date.now()}`;
   await modal.getByLabel('Nombre base de salida').fill(base);
+  await modal.getByLabel('Título del MKV').fill('Título del disco');
+  const queuedResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/makemkv/convert'),
+  );
   await modal.getByRole('button', { name: 'Extraer y revisar pistas', exact: true }).click();
+  const queued = await (await queuedResponse).json();
+  const drawer = page.getByRole('complementary', { name: 'Panel de operaciones' });
+  const card = drawer.locator(`[data-job-id="${queued.id}"]`);
   await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
   await card.getByRole('button', { name: 'Revisar pistas', exact: true }).click({ timeout: 15000 });
   await expect(drawer).toHaveCount(0);
   const names = modal.getByRole('textbox', { name: 'Nombre de pista', exact: true });
   await expect(modal.locator('.track-group')).toHaveCount(3);
   await expect(modal.getByLabel('Archivo de salida')).toHaveValue(base);
+  await expect(modal.getByLabel('Título del MKV')).toHaveValue('Título del disco');
+  await modal.getByLabel('Título del MKV').fill('Título final del MKV');
   await expect(modal.locator('.source-label')).toHaveCount(0);
   await expect(modal.locator('.track-description').first()).not.toContainText('#');
   await expect(modal.locator('.track-codec-logo .codec-flag').first()).toBeVisible();
@@ -275,18 +380,18 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
       .getByRole('button', { name: 'Limpiar nombres de todas las pistas' }),
   ).toBeVisible();
   await expect(modal.getByText('Sin transferencias por el navegador')).toHaveCount(0);
-  const audioGroup = modal
+  const videoGroup = modal
     .locator('.track-group')
-    .filter({ has: page.locator('summary', { hasText: 'Audio' }) });
-  await audioGroup.locator('summary').click();
-  await expect(audioGroup.locator('.track-row').first()).toBeHidden();
-  await audioGroup.locator('summary').click();
+    .filter({ has: page.locator('summary', { hasText: 'Vídeo' }) });
+  await videoGroup.locator('summary').click();
+  await expect(videoGroup.locator('.track-row').first()).toBeHidden();
+  await videoGroup.locator('summary').click();
   await names.first().fill('Nombre que también se elimina');
-  await names.nth(1).fill('Otro nombre');
+  for (const name of await names.all()) await name.fill('Nombre que se elimina');
   await modal.getByRole('button', { name: 'Limpiar nombres de todas las pistas' }).click();
   for (const name of await names.all()) await expect(name).toHaveValue('');
-  await modal.getByRole('textbox', { name: 'Idioma BCP 47', exact: true }).nth(1).fill('es-MX');
-  await expect(audioGroup.locator('.language-flag').first()).toHaveAttribute(
+  await modal.getByRole('textbox', { name: 'Idioma BCP 47', exact: true }).first().fill('es-MX');
+  await expect(videoGroup.locator('.language-flag').first()).toHaveAttribute(
     'src',
     '/language-flags/mx.svg',
   );
@@ -299,23 +404,27 @@ test('ISO preparation runs in background, reopens, edits track names and dismiss
   await page.keyboard.press('Control+a');
   await page.keyboard.type('Plex video');
   await expect(names.first()).toHaveValue('Plex video');
-  await names.nth(1).fill('Nombre que se elimina');
-  await names.nth(1).click();
-  await expect(names.nth(1)).toBeFocused();
+  await names.first().click();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Backspace');
-  await expect(names.nth(1)).toHaveValue('');
+  await expect(names.first()).toHaveValue('');
+  await names.first().fill('Plex video');
   await page.screenshot({ path: 'test-results/visual/review-editable.png', fullPage: true });
   await modal.getByRole('button', { name: 'Confirmar y crear MKV', exact: true }).click();
   await page.getByRole('button', { name: 'Operaciones', exact: false }).first().click();
   await expect(card.locator('.job-status')).toHaveText('Completado', { timeout: 15000 });
+  await expect(card).toHaveClass(/job-compact/);
+  await expect(card.locator('.job-stage')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Expandir', exact: true }).click();
+  await expect(card.locator('.job-stage')).toBeVisible();
   const inspect = await page.request.post('/api/media/inspect', {
     headers: { 'X-Muxplorer': '1' },
     data: { root: 'plex', path: base + '.mkv' },
   });
   const media = await inspect.json();
+  expect(media.title).toBe('Título final del MKV');
   expect(media.tracks[0].name).toBe('Plex video');
-  expect(media.tracks[1].name).toBe('');
+  expect(media.tracks[0].language).toBe('es-MX');
   await card.getByRole('button', { name: 'Quitar de operaciones', exact: true }).click();
   await expect(card).toHaveCount(0);
   await page.reload();
@@ -367,4 +476,48 @@ test('queued operations expose Empezar with two jobs already running', async ({ 
   await expect(
     drawer.locator('[data-job-id="waiting"]').getByRole('button', { name: 'Empezar', exact: true }),
   ).toBeEnabled();
+});
+
+test('context shortcuts copy and move directly into the folder open in the opposite panel', async ({
+  page,
+}) => {
+  const left = page.locator('mx-explorer[panelId="left"]');
+  const right = page.locator('mx-explorer[panelId="right"]');
+  const calls: unknown[] = [];
+  await page.route('**/api/files/operation', async (route) => {
+    calls.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { ok: true } });
+  });
+  await right
+    .getByRole('row')
+    .filter({ hasText: /^Películas/ })
+    .dblclick();
+  await left.getByRole('row').filter({ hasText: 'Notas.txt' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Copiar al panel de al lado', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(calls[0]).toEqual({
+    kind: 'copy',
+    sources: [{ root: 'downloads', path: 'Notas.txt' }],
+    destination: { root: 'plex', path: 'Películas' },
+  });
+  // A folder works too, and the destination follows navigation in the other panel.
+  await left.getByRole('row').filter({ hasText: 'Colección de prueba' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Mover al panel de al lado', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(calls[1]).toEqual({
+    kind: 'move',
+    sources: [{ root: 'downloads', path: 'Colección de prueba' }],
+    destination: { root: 'plex', path: 'Películas' },
+  });
+  await right.getByRole('button', { name: 'Carpeta superior' }).click();
+  await right
+    .getByRole('row')
+    .filter({ hasText: /^Series/ })
+    .click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Copiar al panel de al lado', exact: true }).click();
+  expect(calls[2]).toEqual({
+    kind: 'copy',
+    sources: [{ root: 'plex', path: 'Series' }],
+    destination: { root: 'downloads', path: '' },
+  });
 });

@@ -305,3 +305,43 @@ test('manual start schedules pending work outside the visible history window', a
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('delete bypasses a busy queue and does not consume an automatic worker slot', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'mux-delete-priority-'));
+  const store = new Store(directory),
+    jobs = new Jobs(store);
+  const previous = config.JOB_CONCURRENCY;
+  config.JOB_CONCURRENCY = 1;
+  const releases = new Map<string, () => void>();
+  const until = async (condition: () => boolean) => {
+    for (let i = 0; i < 100 && !condition(); i++) await sleep(5);
+    assert.ok(condition());
+  };
+  const hold = async (_payload: unknown, ctx: JobContext) => {
+    await new Promise<void>((resolve) => {
+      releases.set(ctx.id, resolve);
+      ctx.signal.addEventListener('abort', resolve, { once: true });
+    });
+  };
+  try {
+    jobs.register('copy', hold);
+    jobs.register('delete', hold);
+    const first = jobs.enqueue('copy', {}, []);
+    await until(() => jobs.get(first.id).status === 'running');
+    const waiting = jobs.enqueue('copy', {}, []);
+    const deletion = jobs.enqueue('delete', {}, []);
+    await until(() => jobs.get(deletion.id).status === 'running');
+    assert.equal(jobs.get(waiting.id).status, 'pending');
+    releases.get(first.id)!();
+    await until(() => jobs.get(waiting.id).status === 'running');
+    assert.equal(jobs.get(deletion.id).status, 'running');
+    releases.get(waiting.id)!();
+    releases.get(deletion.id)!();
+    await until(() => jobs.get(deletion.id).status === 'completed');
+  } finally {
+    await jobs.onModuleDestroy();
+    config.JOB_CONCURRENCY = previous;
+    store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

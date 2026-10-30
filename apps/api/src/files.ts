@@ -30,11 +30,48 @@ export class Files {
     readonly paths: Paths,
     private readonly processes: Processes,
   ) {}
-  private lock: Promise<unknown> = Promise.resolve();
-  exclusive<T>(action: () => Promise<T>): Promise<T> {
-    const next = this.lock.then(action);
-    this.lock = next.catch(() => undefined);
-    return next;
+  private readonly locks = new Set<{ paths: string[]; done: Promise<void> }>();
+  overlaps(a: Location, b: Location): boolean {
+    const absolute = (location: Location) => {
+      const value = path.resolve(this.paths.roots[location.root], location.path);
+      return process.platform === 'win32' ? value.toLowerCase() : value;
+    };
+    return this.pathOverlaps(absolute(a), absolute(b));
+  }
+  private pathOverlaps(a: string, b: string): boolean {
+    const contains = (parent: string, child: string) => {
+      const relative = path.relative(parent, child);
+      return (
+        !relative ||
+        (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+      );
+    };
+    return contains(a, b) || contains(b, a);
+  }
+  exclusive<T>(locations: Location[], action: () => Promise<T>): Promise<T> {
+    // Reserve before awaiting: overlapping waiters keep their order, while unrelated
+    // films can proceed. Resolve against storage roots so aliases share a lock.
+    const paths = locations.map((location) => {
+      const value = path.resolve(this.paths.roots[location.root], location.path);
+      return process.platform === 'win32' ? value.toLowerCase() : value;
+    });
+    const previous = [...this.locks].filter((lock) =>
+      lock.paths.some((a) => paths.some((b) => this.pathOverlaps(a, b))),
+    );
+    let release!: () => void;
+    const lock = {
+      paths,
+      done: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    };
+    this.locks.add(lock);
+    return Promise.all(previous.map((item) => item.done))
+      .then(action)
+      .finally(() => {
+        this.locks.delete(lock);
+        release();
+      });
   }
   async list(location: Location): Promise<Entry[]> {
     const directory = await this.paths.directory(location);
@@ -69,7 +106,7 @@ export class Files {
     return entries;
   }
   async create(parent: Location, name: string) {
-    return this.exclusive(async () => {
+    return this.exclusive([childLocation(parent, name)], async () => {
       await this.paths.directory(parent);
       const dest = childLocation(parent, name);
       await mkdir(await this.paths.resolve(dest, true));
@@ -77,7 +114,8 @@ export class Files {
     });
   }
   async rename(source: Location, name: string) {
-    return this.exclusive(async () => {
+    const parent = { ...source, path: source.path.split('/').slice(0, -1).join('/') };
+    return this.exclusive([source, childLocation(parent, name)], async () => {
       this.paths.assertMutable(source);
       const from = await this.paths.resolve(source);
       const parent = { ...source, path: source.path.split('/').slice(0, -1).join('/') };
@@ -156,7 +194,13 @@ export class Files {
     return hash.digest('hex');
   }
   async operate(kind: 'copy' | 'move' | 'delete', request: FileRequest, context: JobContext) {
-    return this.exclusive(async () => {
+    for (const source of request.sources) this.paths.assertMutable(source);
+    const destinations = request.destination
+      ? request.sources.map((source) =>
+          childLocation(request.destination!, path.posix.basename(source.path)),
+        )
+      : [];
+    return this.exclusive([...request.sources, ...destinations], async () => {
       const { sources, destination } = request;
       if (!sources.length) problem('Selecciona al menos un elemento.');
       if (kind === 'delete' && request.confirmed !== true) problem('Confirma la eliminación.');
@@ -296,12 +340,22 @@ export class Files {
   }
   async cleanup(destination: Location, id: string) {
     const parent = await this.paths.directory(destination);
-    for (const name of await readdir(parent))
-      if (name === `.muxplorer-${id}` || name.startsWith(`.muxplorer-${id}-`)) {
-        const target = path.join(parent, name);
-        const item = await lstat(target);
-        if (!item.isSymbolicLink() && item.isDirectory())
-          await rm(target, { recursive: true, force: true });
-      }
+    const names = (await readdir(parent)).filter(
+      (name) => name === `.muxplorer-${id}` || name.startsWith(`.muxplorer-${id}-`),
+    );
+    await this.exclusive(
+      names.map((name) => ({
+        ...destination,
+        path: [destination.path, name].filter(Boolean).join('/'),
+      })),
+      async () => {
+        for (const name of names) {
+          const target = path.join(parent, name);
+          const item = await lstat(target);
+          if (!item.isSymbolicLink() && item.isDirectory())
+            await rm(target, { recursive: true, force: true });
+        }
+      },
+    );
   }
 }

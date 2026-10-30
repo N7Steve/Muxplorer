@@ -13,11 +13,12 @@ export class Api {
   private pollTimer?: ReturnType<typeof setTimeout>;
   private connectionGeneration = 0;
   private noticeTimer?: ReturnType<typeof setTimeout>;
-  async request<T>(url: string, body?: unknown): Promise<T> {
+  async request<T>(url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await fetch(`/api/${url}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Muxplorer': '1' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
     const data: unknown = await response.json();
     if (!response.ok)
