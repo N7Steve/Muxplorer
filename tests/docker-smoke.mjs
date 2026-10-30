@@ -281,6 +281,17 @@ try {
     '/data/downloads/english.srt',
   );
   const original = await request('media/inspect', downloads('movie.mkv'), 201);
+  const summary = await request('media/summary', downloads('movie.mkv'), 201);
+  assert.equal(summary.container, 'Matroska');
+  assert.equal(summary.audios.length, 1);
+  assert.ok(summary.audios[0].codec.includes('PCM'));
+  assert.equal(summary.audios[0].channels, 1);
+  assert.equal(summary.audios[0].sampleRate, 8000);
+  assert.equal(summary.duration, 1);
+  assert.ok(summary.size > 0);
+  await request('media/summary', downloads('../etc/passwd'), 400);
+  await request('media/summary', downloads('escape/passwd'), 400);
+  await request('media/summary', downloads('fixtures/file.txt'), 400);
   const external = await request('media/inspect', downloads('Subtítulos.srt'), 201);
   const choice = (t, source) => ({
     source,

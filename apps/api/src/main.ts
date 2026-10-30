@@ -15,13 +15,27 @@ import { Files } from './files';
 import { Jobs } from './jobs';
 import { Archives } from './archives';
 import { Mkv } from './mkv';
+import { MediaInfo } from './mediainfo';
 import { MakeMkv } from './makemkv';
 import { Discs } from './discs';
 import { ApiController, PublicController } from './controller';
 import { ApiErrors } from './errors';
 @Module({
   controllers: [PublicController, ApiController],
-  providers: [Store, Auth, AuthGuard, Processes, Paths, Files, Jobs, Archives, Mkv, MakeMkv, Discs],
+  providers: [
+    Store,
+    Auth,
+    AuthGuard,
+    Processes,
+    Paths,
+    Files,
+    Jobs,
+    Archives,
+    Mkv,
+    MakeMkv,
+    Discs,
+    MediaInfo,
+  ],
 })
 class AppModule {}
 async function bootstrap() {

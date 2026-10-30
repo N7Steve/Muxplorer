@@ -37,7 +37,8 @@ FROM node:24-bookworm-slim AS production
 LABEL org.opencontainers.image.source="https://github.com/N7Steve/Muxplorer" \
       org.opencontainers.image.title="Muxplorer"
 COPY --from=tools /build/mkvtoolnix.deb /tmp/mkvtoolnix.deb
-RUN apt-get update && apt-get install -y --no-install-recommends /tmp/mkvtoolnix.deb ca-certificates libavcodec59 libexpat1 libssl3 zlib1g tini && rm /tmp/mkvtoolnix.deb && rm -rf /var/lib/apt/lists/*
+COPY --from=tools /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN sed -i 's,http://deb.debian.org,https://deb.debian.org,g' /etc/apt/sources.list.d/debian.sources && apt-get update && apt-get install -y --no-install-recommends /tmp/mkvtoolnix.deb mediainfo ca-certificates libavcodec59 libexpat1 libssl3 zlib1g tini && rm /tmp/mkvtoolnix.deb && rm -rf /var/lib/apt/lists/*
 COPY --from=tools /install/ /
 COPY --from=tools /build/sevenzip/7zz /usr/local/bin/7zz
 COPY --from=tools /licenses/ /app/licenses/

@@ -17,6 +17,7 @@ import { Explorer, Action } from './explorer';
 import { Icon } from './icon';
 import { Tracks, EditableTrack } from './tracks';
 import { orderAudio } from './audio-order';
+import { MediaInfoState, MediaInfoView } from './mediainfo';
 type Dialog =
   | 'mkdir'
   | 'rename'
@@ -25,6 +26,7 @@ type Dialog =
   | 'extract'
   | 'remux'
   | 'metadata'
+  | 'mediainfo'
   | 'disc'
   | 'properties'
   | 'settings'
@@ -47,11 +49,12 @@ function editable(track: Track, source: number, sourceName: string): EditableTra
 @Component({
   selector: 'mux-app',
   standalone: true,
-  imports: [FormsModule, DatePipe, A11yModule, Explorer, Icon, Tracks],
+  imports: [FormsModule, DatePipe, A11yModule, Explorer, Icon, Tracks, MediaInfoView],
   templateUrl: './app.html',
 })
 export class AppComponent {
   readonly api = inject(Api);
+  readonly mediaInfo = inject(MediaInfoState);
   readonly authenticated = signal(false);
   readonly configured = signal(true);
   readonly starting = signal(true);
@@ -194,6 +197,7 @@ export class AppComponent {
   async logout() {
     await this.api.request('auth/logout', {});
     this.api.disconnect();
+    this.mediaInfo.clear();
     this.authenticated.set(false);
     this.profileOpen.set(false);
   }
@@ -236,6 +240,15 @@ export class AppComponent {
       (/\.iso$/i.test(entry.name) || entry.name.toLowerCase() === 'index.bdmv')
     );
   }
+  isSummaryMedia(entry?: Entry) {
+    return (
+      !!entry &&
+      entry.kind === 'file' &&
+      /\.(mkv|mp4|m4v|avi|mov|webm|m2ts|mts|ts|mpg|mpeg|wmv|flv|vob|hevc|h264|h265|av1|flac|ac3|eac3|aac|dts|dtshd|truehd|thd|mp3|wav|ogg|opus|m4a|mka|aiff|aif|alac|wma)$/i.test(
+        entry.name,
+      )
+    );
+  }
   async onAction(action: Action) {
     if (action.action === 'context') {
       this.context.set({
@@ -246,6 +259,15 @@ export class AppComponent {
       return;
     }
     this.context.set(null);
+    if (['mediainfo', 'compare-media'].includes(action.action)) {
+      this.dialog.set('mediainfo');
+      this.jobsOpen.set(false);
+      await this.mediaInfo.inspect(
+        action.entries.map((entry) => entry.location),
+        action.action === 'compare-media',
+      );
+      return;
+    }
     if (['copy-other', 'move-other'].includes(action.action) && action.entries.length) {
       try {
         await this.api.request('files/operation', {

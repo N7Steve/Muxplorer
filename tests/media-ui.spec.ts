@@ -41,6 +41,28 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Entrar en Muxplorer' }).click();
   await expect(page.locator('.panels')).toBeVisible();
 });
+
+test('MediaInfo can be minimized, restored and compared with another file', async ({ page }) => {
+  const left = page.locator('mx-explorer[panelId="left"]');
+  await left.getByRole('row').filter({ hasText: 'Muestra.mkv' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Ver MediaInfo', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await expect(modal.locator('.mediainfo-table')).toBeVisible();
+  await expect(modal.locator('.mediainfo-table')).toContainText('PCM');
+  await modal.getByRole('button', { name: 'Minimizar a Operaciones' }).click();
+  await expect(page.getByRole('button', { name: 'Ver MediaInfo', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar operaciones', exact: true }).click();
+  await left.getByRole('row').filter({ hasText: 'Muestra.wav' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Añadir a comparación', exact: true }).click();
+  await expect(modal.locator('.mediainfo-table thead th')).toHaveCount(3);
+  await expect(modal.locator('.mediainfo-different')).not.toHaveCount(0);
+  await modal.getByLabel('Solo diferencias').check();
+  await expect(modal.locator('tbody tr:not(.mediainfo-different)')).toHaveCount(0);
+  await modal.getByRole('button', { name: 'Minimizar a Operaciones' }).click();
+  await page.getByRole('button', { name: 'Ver MediaInfo', exact: true }).click();
+  await expect(modal.locator('.mediainfo-table thead th')).toHaveCount(3);
+  await page.screenshot({ path: 'test-results/visual/mediainfo-comparison.png', fullPage: true });
+});
 test('all media engines are available automatically without an extra MakeMKV setup screen', async ({
   page,
 }) => {

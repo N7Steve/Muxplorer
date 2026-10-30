@@ -240,7 +240,29 @@
   </header>
   <p class="drawer-description">Puedes seguir navegando mientras el servidor trabaja.</p>
   <div class="jobs-list">
-    @for (job of visibleJobs(); track job.id) {
+    @if(mediaInfo.files().length || mediaInfo.loading() || mediaInfo.error()) {
+    <article class="job-card">
+      <b
+        >MediaInfo · {{ mediaInfo.loading() ? 'Analizando…' : mediaInfo.files().length === 2 ?
+        'Comparación' : 'Resumen guardado' }}</b
+      >
+      @for(file of mediaInfo.files(); track file.location.path) {
+      <p class="job-source">{{ file.location.path.split('/').pop() }}</p>
+      } @if(mediaInfo.error()){
+      <p class="danger-text">{{ mediaInfo.error() }}</p>
+      }
+      <div class="job-actions">
+        <button
+          class="button secondary compact"
+          (click)="dialog.set('mediainfo'); jobsOpen.set(false)"
+        >
+          Ver MediaInfo
+        </button>
+        <button class="button ghost compact" (click)="mediaInfo.clear()">Quitar MediaInfo</button>
+      </div>
+      <p class="muted">Añade otro archivo desde su menú contextual para comparar.</p>
+    </article>
+    } @for (job of visibleJobs(); track job.id) {
     <article
       class="job-card"
       animate.leave="job-leave"
@@ -376,7 +398,17 @@
   <div class="menu-label">
     {{ ctx.entries.length ? ctx.entries.length + ' elementos seleccionados' : 'Esta carpeta' }}
   </div>
-  @if(ctx.entries.length === 1 && isArchive(ctx.entries[0])) {<button
+  @if(ctx.entries.length >= 1 && ctx.entries.length <= 2 && ctx.entries.every(isSummaryMedia)) {
+  <button role="menuitem" (click)="contextAction('mediainfo')" [disabled]="mediaInfo.loading()">
+    <mx-icon name="Info" />{{ ctx.entries.length === 2 ? 'Comparar MediaInfo' : 'Ver MediaInfo' }}
+  </button>
+  @if(ctx.entries.length === 1 && mediaInfo.files().length) {
+  <button role="menuitem" (click)="contextAction('compare-media')" [disabled]="mediaInfo.loading()">
+    Añadir a comparación
+  </button>
+  }
+  <hr />
+  } @if(ctx.entries.length === 1 && isArchive(ctx.entries[0])) {<button
     role="menuitem"
     (click)="contextAction('extract')"
   >
@@ -437,7 +469,7 @@
 <div class="modal-backdrop" (mousedown)="backdrop($event)">
   <section
     class="modal"
-    [class.wide]="modal === 'remux' || modal === 'metadata' || modal === 'disc' || modal === 'review'"
+    [class.wide]="modal === 'mediainfo' || modal === 'remux' || modal === 'metadata' || modal === 'disc' || modal === 'review'"
     role="dialog"
     aria-modal="true"
     aria-labelledby="modal-title"
@@ -457,8 +489,8 @@
           'extract' ? 'Extraer archivo' : modal === 'metadata' ? 'Editar tags del MKV' : modal ===
           'remux' ? (currentAction()?.entries?.[0]?.name ?? 'MKVToolNix') : modal === 'disc' ? 'Del
           disco a tu biblioteca' : modal === 'review' ? 'Elige las pistas definitivas' : modal ===
-          'settings' ? 'Tu servidor' : modal === 'shortcuts' ? 'Muévete con el teclado' :
-          'Propiedades' }}
+          'settings' ? 'Tu servidor' : modal === 'mediainfo' ? 'MediaInfo rápido' : modal ===
+          'shortcuts' ? 'Muévete con el teclado' : 'Propiedades' }}
         </h2>
       </div>
       <button
@@ -484,7 +516,8 @@
     </div>
     } @else {
     <div class="modal-body modal-reveal">
-      @if(!mediaLoadFailed()){ @if(modal === 'mkdir' || modal === 'rename') {
+      @if(modal === 'mediainfo'){<mx-mediainfo />} @if(!mediaLoadFailed()){ @if(modal === 'mkdir' ||
+      modal === 'rename') {
       <p class="muted">
         {{ modal === 'mkdir' ? 'Crea una carpeta en ' + display(currentAction()!.location) : 'Nuevo
         nombre para ' + currentAction()!.entries[0].name }}
@@ -747,7 +780,11 @@
     </div>
     }
     <footer class="modal-footer" [class.modal-reveal]="!mediaLoading()">
-      @if(mediaLoading() || mediaLoadFailed()){ @if(modal === 'disc' && discEngine() === 'disc' &&
+      @if(modal === 'mediainfo'){
+      <button class="button primary" (click)="close(); jobsOpen.set(true)">
+        Minimizar a Operaciones
+      </button>
+      } @if(mediaLoading() || mediaLoadFailed()){ @if(modal === 'disc' && discEngine() === 'disc' &&
       discPreparationId()){
       <button class="button secondary" (click)="close(); jobsOpen.set(true)">
         Continuar en segundo plano
@@ -773,8 +810,9 @@
       </button>
       <button class="button ghost" (click)="cancelPreparation()">Cancelar análisis</button>
       }@else{<button class="button secondary" (click)="close()" [disabled]="busy()">
-        {{ ['settings','properties','shortcuts'].includes(modal) ? 'Cerrar' : 'Cancelar' }}</button
-      >}@if(!['settings','properties','shortcuts'].includes(modal)){<button
+        {{ ['settings','properties','shortcuts','mediainfo'].includes(modal) ? 'Cerrar' : 'Cancelar'
+        }}</button
+      >}@if(!['settings','properties','shortcuts','mediainfo'].includes(modal)){<button
         class="button"
         [class.danger]="modal === 'delete'"
         [class.primary]="modal !== 'delete'"

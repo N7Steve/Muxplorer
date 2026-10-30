@@ -1,5 +1,52 @@
 @import 'tailwindcss';
 @source './**/*.{html,ts}';
+.mediainfo-scroll {
+  overflow-x: auto;
+}
+.mediainfo-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.mediainfo-table th,
+.mediainfo-table td {
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.mediainfo-table th {
+  font-weight: 600;
+}
+.mediainfo-table small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.mediainfo-table thead th {
+  background: var(--raised);
+}
+.mediainfo-table .mediainfo-different {
+  background: var(--accent-dim);
+}
+.mediainfo-table .mediainfo-different th small {
+  color: var(--accent);
+}
+.mediainfo-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mediainfo-filter input {
+  width: auto;
+}
+@media (max-width: 640px) {
+  .mediainfo-table {
+    min-width: 600px;
+  }
+}
 @theme {
   --font-sans: 'Segoe UI', Inter, -apple-system, BlinkMacSystemFont, sans-serif;
 }

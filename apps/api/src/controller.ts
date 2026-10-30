@@ -23,6 +23,7 @@ import { Paths } from './paths';
 import { Jobs } from './jobs';
 import { Archives, ExtractRequest } from './archives';
 import { Mkv } from './mkv';
+import { MediaInfo } from './mediainfo';
 import { MakeMkv, MakeRequest, robotFields } from './makemkv';
 import { Processes } from './process';
 import { config } from './config';
@@ -84,6 +85,7 @@ export class ApiController implements OnModuleInit {
     private readonly processes: Processes,
     private readonly auth: Auth,
     private readonly discs: Discs,
+    private readonly mediaInfo: MediaInfo,
   ) {}
   onModuleInit() {
     for (const kind of ['copy', 'move', 'delete'] as const)
@@ -144,6 +146,11 @@ export class ApiController implements OnModuleInit {
     const location = contract.parse(contract.location, body);
     this.assertMediaAvailable(location);
     return this.mkv.inspect(location);
+  }
+  @Post('media/summary') summary(@Body() body: unknown) {
+    const location = contract.parse(contract.location, body);
+    this.assertMediaAvailable(location);
+    return this.mediaInfo.inspect(location);
   }
   @Post('media/remux') remux(@Body() body: unknown) {
     const data = contract.parse(contract.remux, body);

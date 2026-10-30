@@ -12,6 +12,7 @@ const env = z
     SEVENZIP_BIN: z.string().default('7zz'),
     MKVMERGE_BIN: z.string().default('mkvmerge'),
     MKVPROPEDIT_BIN: z.string().default('mkvpropedit'),
+    MEDIAINFO_BIN: z.string().default('mediainfo'),
     MAKEMKV_BIN: z.string().default('makemkvcon'),
     SANDBOX_BIN: z.string().default('mux-sandbox'),
     RENAME_BIN: z.string().default('mux-rename'),

@@ -9,6 +9,31 @@ export interface Root {
   available: boolean;
   free?: number;
 }
+export interface SummaryTrack {
+  codec: string;
+  bitrate?: number;
+  bitrateMode: string;
+  language: string;
+  title: string;
+  channels?: number;
+  layout: string;
+  sampleRate?: number;
+  width?: number;
+  height?: number;
+  frameRate?: number;
+  bitDepth?: number;
+  hdr: string;
+  color: string;
+}
+export interface MediaSummary {
+  location: Location;
+  size: number;
+  container: string;
+  duration?: number;
+  bitrate?: number;
+  videos: SummaryTrack[];
+  audios: SummaryTrack[];
+}
 export interface Entry {
   name: string;
   location: Location;
