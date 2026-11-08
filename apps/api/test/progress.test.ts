@@ -111,6 +111,35 @@ test('cancelling freezes further CLI updates and clears the unfinished percentag
   }
 });
 
+test('a failed job clears the engine completion percentage in persisted state and SSE', async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-job-failure-'));
+  const store = new Store(temporary),
+    jobs = new Jobs(store);
+  const events: Job[] = [];
+  const subscription = jobs.events.subscribe(({ data }) => events.push(data));
+  try {
+    jobs.register('makemkv', async (_payload, context) => {
+      context.update('MakeMKV · Título 0', 100);
+      throw new Error('0 titles saved, 1 failed');
+    });
+    const job = jobs.enqueue('makemkv', {}, []);
+    for (let n = 0; n < 100 && jobs.get(job.id).status !== 'failed'; n++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    const final = jobs.get(job.id);
+    assert.equal(final.status, 'failed');
+    assert.equal(final.progress, null);
+    assert.equal(final.error, '0 titles saved, 1 failed');
+    assert.ok(events.some((event) => event.progress === 100));
+    assert.equal(events.at(-1)?.status, 'failed');
+    assert.equal(events.at(-1)?.progress, null);
+  } finally {
+    subscription.unsubscribe();
+    await jobs.onModuleDestroy();
+    store.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test('archive completion reports validation, publication and cleanup instead of leaving the last engine percentage', async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-archive-progress-'));
   try {

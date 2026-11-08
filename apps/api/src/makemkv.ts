@@ -88,6 +88,34 @@ export function makeSource(absolute: string) {
     return `file:${path.dirname(path.dirname(absolute))}`;
   return problem('MakeMKV requiere una ISO o un index.bdmv dentro de una carpeta BDMV válida.');
 }
+// MakeMKV can report a failed save and still exit with code 0. Keep this state
+// from the live stream: captured stdout may stop growing during long jobs.
+class ConversionMessages {
+  failed = false;
+  private corruption?: string;
+  private exception?: string;
+  private recent: string[] = [];
+
+  accept(fields: string[]) {
+    const code = Number(fields[0]);
+    const message = (fields[3] ?? '').slice(0, 2000);
+    this.recent = [...this.recent, message].slice(-3);
+    if ([5003, 5004, 5010, 5037].includes(code)) this.failed = true;
+    if (code === 4004) this.corruption ??= message;
+    if (code === 1002 && /Exception|MKV_ASSERT/i.test(message)) this.exception ??= message;
+  }
+
+  error(title: number, fallback: string): never {
+    const cause = this.corruption
+      ? 'El motor detectó datos corruptos o inválidos en el origen. Comprueba la integridad de la ISO o carpeta Blu-ray.'
+      : this.exception
+        ? 'El motor encontró un error interno al generar el MKV.'
+        : fallback;
+    const details =
+      [this.corruption, this.exception].filter(Boolean).join(' ') || this.recent.join(' ');
+    problem(`MakeMKV no pudo extraer el título ${title}. ${cause}${details ? ` ${details}` : ''}`);
+  }
+}
 @Injectable()
 export class MakeMkv implements OnModuleInit {
   private activation?: Promise<void>;
@@ -223,6 +251,7 @@ export class MakeMkv implements OnModuleInit {
           const directory = path.join(staging, relative);
           await mkdir(directory);
           context.update(`MakeMKV · Extrayendo título ${id}`);
+          const messages = new ConversionMessages();
           await this.processes.run(
             config.MAKEMKV_BIN,
             [
@@ -248,17 +277,24 @@ export class MakeMkv implements OnModuleInit {
                 }
                 if (line.startsWith('MSG:')) {
                   const fields = robotFields(line.slice(4));
+                  messages.accept(fields);
                   context.message(fields[3] ?? '');
                 }
               },
             },
           );
+          if (messages.failed)
+            messages.error(
+              id,
+              'El motor informó de un fallo al guardar el título. Consulta los mensajes en Detalles.',
+            );
           const output = (await readdir(directory)).filter((name) =>
             name.toLowerCase().endsWith('.mkv'),
           );
           if (output.length !== 1)
-            problem(
-              'MakeMKV no produjo exactamente un MKV para el título. Consulta los mensajes y la licencia.',
+            messages.error(
+              id,
+              `Se esperaba un MKV y se encontraron ${output.length}. Consulta los mensajes en Detalles.`,
             );
           const file = path.join(relative, output[0]);
           if (!(await lstat(path.join(staging, file))).size) problem('El MKV generado está vacío.');

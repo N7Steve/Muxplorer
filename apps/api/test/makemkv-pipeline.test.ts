@@ -11,6 +11,156 @@ import { Files } from '../src/files';
 import { Processes, ProcessOptions } from '../src/process';
 import { config } from '../src/config';
 import { JobContext, NeedsReview } from '../src/jobs';
+
+test('MakeMKV validates robot save failures independently of exit code and partial files', async (t) => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-make-failure-'));
+  const previousHome = config.MAKEMKV_HOME;
+  config.MAKEMKV_HOME = path.join(temporary, 'home');
+  try {
+    const downloads = path.join(temporary, 'downloads'),
+      plex = path.join(temporary, 'plex');
+    await mkdir(downloads);
+    await mkdir(plex);
+    await writeFile(path.join(downloads, 'disc.iso'), 'unchanged ISO');
+    const corruption =
+      'MSG:4004,0,2,"The source file /BDMV/STREAM/00000.m2ts is corrupt or invalid at offset 9081458688, attempting to work around"';
+    const exception =
+      'MSG:1002,0,1,"LIBMKV_TRACE: Exception: MKV_ASSERT: TimecodeDelay >= int16(0x8000) && TimecodeDelay <= int16(0x7FFF)"';
+    const cases = [
+      {
+        name: 'reported corruption and timecode failure without output',
+        lines: [
+          corruption,
+          exception,
+          ...Array<string>(50).fill('MSG:2008,0,0,"Slow disk warning"'),
+          'MSG:5003,0,2,"Failed to save title 0 to file title.mkv"',
+          'MSG:5004,0,2,"0 titles saved, 1 failed","%1 titles saved, %2 failed","0","1"',
+        ],
+        files: [],
+        error: /datos corruptos o inválidos.*00000\.m2ts.*9081458688.*TimecodeDelay/,
+      },
+      {
+        name: 'localized failed save with a nonempty partial MKV',
+        lines: ['MSG:5003,0,2,"No se pudo guardar el título"'],
+        files: ['partial.mkv'],
+        error: /fallo al guardar.*No se pudo guardar/,
+      },
+      {
+        name: 'failed title summary with a partial MKV',
+        lines: [
+          'MSG:5004,0,2,"0 títulos guardados, 1 fallido","%1 títulos guardados, %2 fallidos","0","1"',
+        ],
+        files: ['partial.mkv'],
+        error: /fallo al guardar/,
+      },
+      {
+        name: 'failed copy summary with a partial MKV',
+        lines: ['MSG:5037,0,2,"Copy complete. 0 titles saved, 1 failed."'],
+        files: ['partial.mkv'],
+        error: /fallo al guardar/,
+      },
+      {
+        name: 'disc open failure',
+        lines: ['MSG:5010,0,0,"Failed to open disc"'],
+        files: [],
+        error: /Failed to open disc/,
+      },
+      {
+        name: 'internal engine exception without output',
+        lines: [exception],
+        files: [],
+        error: /error interno.*TimecodeDelay/,
+      },
+      {
+        name: 'missing output without reported failure',
+        lines: ['MSG:1005,0,1,"MakeMKV started"'],
+        files: [],
+        error: /Se esperaba un MKV y se encontraron 0/,
+      },
+      {
+        name: 'ambiguous output',
+        lines: [],
+        files: ['one.mkv', 'two.mkv'],
+        error: /Se esperaba un MKV y se encontraron 2/,
+      },
+      {
+        name: 'successful recovery from a corruption warning',
+        lines: [
+          corruption,
+          'MSG:5005,0,1,"1 titles saved"',
+          'MSG:5036,0,1,"Copy complete. 1 titles saved."',
+        ],
+        files: ['complete.mkv'],
+        error: undefined,
+      },
+    ];
+    for (const fixture of cases) {
+      await t.test(fixture.name, async () => {
+        class FakeProcess extends Processes {
+          override async run(_binary: string, args: string[], options?: ProcessOptions) {
+            if (args.includes('info')) return { stdout: 'TINFO:0,2,0,"Movie"', code: 0 };
+            for (const line of fixture.lines) options?.onLine?.(line);
+            options?.onLine?.('PRGV:100,100,100');
+            for (const name of fixture.files)
+              await writeFile(path.join(args.at(-1)!, name), 'MKV data');
+            // Simulate stdout having reached its capture limit before the failure.
+            return { stdout: 'MSG:1005,0,1,"MakeMKV started"', code: 0 };
+          }
+        }
+        const paths = new Paths({ downloads, plex }),
+          processes = new FakeProcess();
+        const files = new Files(paths, processes);
+        let inspected = false,
+          checkpointed = false;
+        class FakeMkv extends Mkv {
+          override async inspectAbsolute() {
+            inspected = true;
+            return { title: '', tracks: [] };
+          }
+        }
+        const engine = new MakeMkv(paths, files, processes, new FakeMkv(paths, files, processes));
+        await engine.onModuleInit();
+        const context: JobContext = {
+          id: 'failure-test',
+          signal: new AbortController().signal,
+          update: () => undefined,
+          message: () => undefined,
+          checkpoint: () => {
+            checkpointed = true;
+          },
+          result: () => assert.fail('Extraction must not publish files'),
+        };
+        const request: MakeRequest = {
+          source: { root: 'downloads', path: 'disc.iso' },
+          destination: { root: 'plex', path: '' },
+          titles: [0],
+          name: 'Movie',
+        };
+        if (fixture.error) {
+          await assert.rejects(engine.convert(request, context), (error: Error) => {
+            assert.match(error.message, fixture.error!);
+            assert.doesNotMatch(error.message, /licencia/);
+            return true;
+          });
+          assert.equal(inspected, false);
+          assert.equal(checkpointed, false);
+          assert.equal(request.checkpoint, undefined);
+          assert.deepEqual(await readdir(plex), []);
+        } else {
+          await assert.rejects(engine.convert(request, context), NeedsReview);
+          assert.equal(inspected, true);
+          assert.equal(checkpointed, true);
+          await rm(path.join(plex, '.muxplorer-failure-test'), { recursive: true });
+        }
+        assert.equal(await readFile(path.join(downloads, 'disc.iso'), 'utf8'), 'unchanged ISO');
+      });
+    }
+  } finally {
+    config.MAKEMKV_HOME = previousHome;
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test('MakeMKV keeps a checkpoint, reviews generated track IDs and only publishes after exact remux', async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'mux-make-'));
   const previousHome = config.MAKEMKV_HOME;

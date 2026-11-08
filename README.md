@@ -96,6 +96,8 @@ La configuración se crea automáticamente en `/config/makemkv/.MakeMKV/settings
 
 Los binarios originales se obtienen de la [distribución oficial para Linux](https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224), con hashes SHA-256 verificados. Las bibliotecas OSS se compilan sin escritorio y se conservan los avisos y licencias originales en la imagen. Interfaces empleadas: [modo robot de MakeMKV](https://www.makemkv.com/developers/usage.txt) y [mkvmerge](https://mkvtoolnix.download/doc/mkvmerge.html).
 
+La conversión comprueba también los mensajes de fallo del modo robot: MakeMKV puede devolver código 0 aunque no consiga guardar el título. En ese caso se descarta cualquier MKV parcial, se limpian los temporales y se muestra la causa comunicada por el motor, incluidos datos corruptos o inválidos en el origen y errores internos. Un trabajo fallido no conserva el 100 % del contador del motor.
+
 ## Logs en TrueNAS
 
 Los registros salen por stdout/stderr del contenedor y se consultan en **Apps → Muxplorer → Logs** (o `docker logs <contenedor>`). Cada registro de diagnóstico ocupa una línea JSON con fecha UTC y nombre del evento. `server.ready` identifica la versión y Node; `job.queued`, `job.started`, `job.progress`, `job.result` y `job.finished` incluyen `jobId`; `process.start`, `process.running` (cada 15 segundos) y `process.exit` incluyen `processId`, duración, código y señal de salida. El progreso se registra por cambio de etapa, cada cinco puntos o cada 15 segundos; `archive.engine_progress` muestrea la consola de 7-Zip cada cinco segundos.

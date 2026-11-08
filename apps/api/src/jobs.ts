@@ -273,12 +273,11 @@ export class Jobs implements OnModuleDestroy {
               : controller.signal.aborted
                 ? 'cancelled'
                 : 'failed';
+            job.progress = null;
             if (job.status === 'cancelled') {
               delete job.error;
-              job.progress = null;
             } else {
               job.error = errorText(error);
-              if (job.status === 'interrupted') job.progress = null;
             }
             job.stage =
               job.status === 'cancelled'

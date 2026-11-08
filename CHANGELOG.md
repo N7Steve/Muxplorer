@@ -1,5 +1,10 @@
 # Cambios
 
+## Sin publicar
+
+- MakeMKV detecta fallos de guardado aunque el motor devuelva código 0, descarta MKV parciales y muestra los errores de origen o del motor en lugar de un aviso genérico sobre la licencia.
+- Las operaciones fallidas retiran el porcentaje del motor para evitar mostrarse al 100 %.
+
 ## 0.1.6
 
 - MKVToolNix permite añadir varios archivos desde el diálogo de remux y combinar sus pistas sin recodificar.
