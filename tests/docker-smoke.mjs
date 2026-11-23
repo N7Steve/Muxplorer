@@ -17,7 +17,12 @@ let base = '',
 async function request(endpoint, body, expected = 200) {
   const response = await fetch(`${base}/api/${endpoint}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { 'content-type': 'application/json', 'x-muxplorer': '1', cookie },
+    headers: {
+      'content-type': 'application/json',
+      'x-muxplorer': '1',
+      connection: 'close',
+      cookie,
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.headers.get('set-cookie')) cookie = response.headers.get('set-cookie').split(';')[0];
