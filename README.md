@@ -44,16 +44,16 @@ El archivo `truenas-compose.yml` está preparado para instalar una Custom App me
 
 No se montan otras carpetas del host ni el socket Docker. `/config` utiliza un volumen independiente.
 
-La instalación normal usa la imagen privada publicada en tu registro local de Gitea:
+La instalación normal usa la imagen privada publicada en tu registro local de Gitea
+(desde TrueNAS por loopback `127.0.0.1:30008`, sin tocar `daemon.json`):
 
 ```yaml
-image: 100.81.25.109:30008/n7steve/muxplorer:latest
+image: 127.0.0.1:30008/n7steve/muxplorer:latest
 pull_policy: missing
 ```
 
-Con `100.81.25.109:30008` configurado en `insecure-registries` en TrueNAS y un token
-`read:package` de Gitea en `/mnt/AppsPool/muxplorer/.maintenance/docker`, descarga la
-imagen antes de instalar (`docker pull`) y configura el cron
+Con un token `read:package` de Gitea en `/mnt/AppsPool/muxplorer/.maintenance/docker`,
+descarga la imagen antes de instalar (`docker pull`) y configura el cron
 `scripts/muxplorer-autoupdate.sh` para aplicar nuevas publicaciones automáticamente.
 Ve a **Apps → Discover Apps → Install via YAML**, pega `truenas-compose.yml`, revisa
 `user: "1000:1000"` y guarda. Abre `http://IP_DEL_NAS:8098` y crea el único administrador.

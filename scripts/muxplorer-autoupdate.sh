@@ -3,7 +3,7 @@ set -Eeuo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 BASE=/mnt/AppsPool/muxplorer/.maintenance
 export DOCKER_CONFIG="$BASE/docker"
-IMAGE=100.81.25.109:30008/n7steve/muxplorer:latest
+IMAGE=127.0.0.1:30008/n7steve/muxplorer:latest
 
 exec 9>"$BASE/update.lock"
 flock -n 9 || exit 0
