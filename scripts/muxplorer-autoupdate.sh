@@ -1,9 +1,11 @@
 #!/bin/bash
 set -Eeuo pipefail
+umask 077
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 BASE=/mnt/AppsPool/muxplorer/.maintenance
 export DOCKER_CONFIG="$BASE/docker"
-IMAGE=127.0.0.1:30008/n7steve/muxplorer:latest
+REPOSITORY=127.0.0.1:30008/n7steve/muxplorer
+IMAGE="${REPOSITORY}:latest"
 
 exec 9>"$BASE/update.lock"
 flock -n 9 || exit 0
@@ -32,6 +34,11 @@ midclt call --job app.redeploy muxplorer >/dev/null
 for attempt in {1..60}; do
   if curl --fail --silent --max-time 3 http://127.0.0.1:8098/api/health >/dev/null; then
     echo "$(date -Is): muxplorer responde correctamente."
+    # Keep the running and previous image for rollback; prune older ones.
+    docker image ls --no-trunc --format '{{.Repository}} {{.ID}}' | sort -u | while read -r repo old; do
+      [[ "$repo" == "$REPOSITORY" && "$old" != "$available" && "$old" != "$running" ]] || continue
+      docker image rm "$old" >/dev/null 2>&1 || true
+    done
     exit 0
   fi
   sleep 5
