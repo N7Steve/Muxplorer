@@ -482,6 +482,18 @@ kbd {
   display: flex;
   flex-direction: column;
 }
+.main-area[hidden],
+.mobile-workspace-toggle {
+  display: none;
+}
+.downloads-area {
+  overflow: auto;
+}
+@media (max-width: 620px) {
+  .mobile-workspace-toggle {
+    display: inline-grid;
+  }
+}
 .page-heading {
   display: flex;
   align-items: center;

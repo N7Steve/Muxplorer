@@ -1,7 +1,9 @@
 # Cambios
 
-## Sin publicar
+## 0.2.0
 
+- Gestor de descargas integrado con Gopeed 1.9.3, con alta por lotes, progreso, pausa, reanudación y cancelación.
+- Publicación recuperable de archivos y paquetes en Downloads, con acceso directo desde el explorador y protección contra sobrescrituras.
 - MakeMKV detecta fallos de guardado aunque el motor devuelva código 0, descarta MKV parciales y muestra los errores de origen o del motor en lugar de un aviso genérico sobre la licencia.
 - Las operaciones fallidas retiran el porcentaje del motor para evitar mostrarse al 100 %.
 

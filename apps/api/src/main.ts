@@ -20,8 +20,13 @@ import { MakeMkv } from './makemkv';
 import { Discs } from './discs';
 import { ApiController, PublicController } from './controller';
 import { ApiErrors } from './errors';
+import { DownloadsController } from './downloads-controller';
+import { Downloads } from './downloads';
+import { DownloadPublication } from './download-publication';
+import { GopeedDownloadProvider } from './gopeed';
+import { DOWNLOAD_PROVIDER } from './download-provider';
 @Module({
-  controllers: [PublicController, ApiController],
+  controllers: [PublicController, ApiController, DownloadsController],
   providers: [
     Store,
     Auth,
@@ -35,6 +40,9 @@ import { ApiErrors } from './errors';
     MakeMkv,
     Discs,
     MediaInfo,
+    Downloads,
+    DownloadPublication,
+    { provide: DOWNLOAD_PROVIDER, useClass: GopeedDownloadProvider },
   ],
 })
 class AppModule {}
@@ -59,7 +67,8 @@ async function bootstrap() {
   );
   app.use(express.json({ limit: '512kb' }));
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (req.path.startsWith('/api') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    const apiRequest = req.path.toLowerCase().startsWith('/api');
+    if (apiRequest && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       const started = Date.now();
       res.once('finish', () =>
         diagnostic('http.mutation', {
@@ -70,7 +79,7 @@ async function bootstrap() {
         }),
       );
     }
-    if (req.path.startsWith('/api')) {
+    if (apiRequest) {
       res.setHeader('Cache-Control', 'no-store');
       if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         if (req.headers['x-muxplorer'] !== '1') {

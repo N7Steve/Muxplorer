@@ -3,6 +3,39 @@ export interface Location {
   root: RootId;
   path: string;
 }
+export type DownloadStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'failed'
+  | 'publishing'
+  | 'publication-failed'
+  | 'completed'
+  | 'cancelled'
+  | 'missing';
+export interface DownloadEngine {
+  status: 'disabled' | 'connecting' | 'connected' | 'unavailable' | 'misconfigured';
+  version?: string;
+  message?: string;
+}
+export interface Download {
+  id: string;
+  name: string;
+  createdAt: string;
+  status: DownloadStatus;
+  downloaded: number;
+  total: number;
+  speed: number;
+  actions: DownloadAction[];
+  error?: string;
+  result?: Location;
+}
+export interface DownloadsPage {
+  engine: DownloadEngine;
+  tasks: Download[];
+  total: number;
+}
+export type DownloadAction = 'pause' | 'resume' | 'cancel' | 'remove' | 'publish';
 export interface Root {
   id: RootId;
   name: string;

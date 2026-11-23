@@ -79,7 +79,7 @@ test('all media engines are available automatically without an extra MakeMKV set
 }) => {
   await page.getByRole('button', { name: 'Configuración y herramientas' }).click();
   const modal = page.getByRole('dialog');
-  await expect(modal.getByText('Muxplorer 0.1.6', { exact: false })).toBeVisible();
+  await expect(modal.getByText('Muxplorer 0.2.0', { exact: false })).toBeVisible();
   await expect(modal.locator('.tool-item').filter({ hasText: 'MakeMKV' })).toContainText(
     'Disponible',
   );

@@ -17,8 +17,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:docker": "node tests/docker-smoke.mjs",
+    "test:downloads": "node tests/downloads-docker.mjs",
     "test:e2e": "playwright test",
-    "test:acceptance": "node tests/docker-smoke.mjs --browser"
+    "test:acceptance": "node tests/docker-smoke.mjs --browser && node tests/downloads-docker.mjs --browser"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

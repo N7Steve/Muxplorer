@@ -48,6 +48,7 @@ export class Explorer {
   readonly future = signal<Location[]>([]);
   private anchor = 0;
   private requestId = 0;
+  private pendingReveal?: { directory: Location; name: string };
   readonly visible = computed(() => {
     const query = this.query().toLocaleLowerCase();
     const key = this.sort(),
@@ -105,9 +106,21 @@ export class Explorer {
       const entries = await this.api.list(location);
       if (id === this.requestId) {
         this.entries.set(entries);
-        this.selected.update(
-          (s) => new Set([...s].filter((name) => entries.some((e) => e.name === name))),
-        );
+        const reveal = this.pendingReveal;
+        if (reveal?.directory === location) {
+          this.pendingReveal = undefined;
+          this.selected.set(
+            new Set(
+              entries.some((e) => e.name === reveal.name && e.kind !== 'blocked')
+                ? [reveal.name]
+                : [],
+            ),
+          );
+        } else {
+          this.selected.update(
+            (s) => new Set([...s].filter((name) => entries.some((e) => e.name === name))),
+          );
+        }
       }
     } catch (error) {
       if (id === this.requestId) {
@@ -119,6 +132,7 @@ export class Explorer {
     }
   }
   navigate(location: Location, record = true) {
+    this.pendingReveal = undefined;
     if (record) {
       this.history.update((h) => [...h, this.location()]);
       this.future.set([]);
@@ -127,6 +141,13 @@ export class Explorer {
     this.query.set('');
     this.location.set(location);
     this.navigated.emit(location);
+  }
+  reveal(location: Location) {
+    const segments = location.path.split('/');
+    const name = segments.pop()!;
+    const directory = { root: location.root, path: segments.join('/') };
+    this.navigate(directory);
+    this.pendingReveal = { directory, name };
   }
   root(root: string) {
     this.navigate({ root: root as RootId, path: '' });

@@ -19,6 +19,7 @@ import { Tracks, EditableTrack } from './tracks';
 import { orderAudio } from './audio-order';
 import { sourceColor } from './source-color';
 import { MediaInfoState, MediaInfoView } from './mediainfo';
+import { DownloadsView } from './downloads';
 type Dialog =
   | 'mkdir'
   | 'rename'
@@ -50,7 +51,16 @@ function editable(track: Track, source: number, sourceName: string): EditableTra
 @Component({
   selector: 'mux-app',
   standalone: true,
-  imports: [FormsModule, DatePipe, A11yModule, Explorer, Icon, Tracks, MediaInfoView],
+  imports: [
+    FormsModule,
+    DatePipe,
+    A11yModule,
+    Explorer,
+    Icon,
+    Tracks,
+    MediaInfoView,
+    DownloadsView,
+  ],
   templateUrl: './app.html',
 })
 export class AppComponent {
@@ -68,6 +78,7 @@ export class AppComponent {
   readonly adminName = signal('');
   readonly active = signal<'left' | 'right'>('left');
   readonly jobsOpen = signal(false);
+  readonly downloadsOpen = signal(false);
   readonly profileOpen = signal(false);
   readonly expandedJobs = signal<Set<string>>(new Set());
   readonly dialog = signal<Dialog>(null);
@@ -202,6 +213,7 @@ export class AppComponent {
     this.mediaInfo.clear();
     this.authenticated.set(false);
     this.profileOpen.set(false);
+    this.downloadsOpen.set(false);
   }
   panel() {
     return this.active() === 'left' ? this.left() : this.right();
@@ -210,7 +222,18 @@ export class AppComponent {
     return this.active() === 'left' ? this.right() : this.left();
   }
   root(root: 'downloads' | 'plex') {
+    this.showDownloads(false);
     this.panel()?.navigate({ root, path: '' });
+  }
+  showDownloads(open: boolean) {
+    this.context.set(null);
+    this.jobsOpen.set(false);
+    this.downloadsOpen.set(open);
+  }
+  revealDownload(location: Location) {
+    this.showDownloads(false);
+    this.active.set('left');
+    this.left()?.reveal(location);
   }
   toolbar(action: string) {
     this.onAction({
@@ -676,8 +699,8 @@ export class AppComponent {
   openResult(job: Job) {
     const result = job.destination;
     if (result) {
+      this.showDownloads(false);
       this.panel()?.navigate(result);
-      this.jobsOpen.set(false);
     }
   }
   @HostListener('document:keydown', ['$event']) keyboard(event: KeyboardEvent) {

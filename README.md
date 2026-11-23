@@ -1,6 +1,6 @@
 # Muxplorer
 
-Explorador web de doble panel para organizar y preparar multimedia en TrueNAS SCALE. Angular standalone y Signals, NestJS, SQLite, 7-Zip, MKVToolNix y MakeMKV en una única imagen sin escritorio. **Los datos se procesan en el servidor; el navegador solo envía órdenes y recibe metadatos y progreso.**
+Explorador web de doble panel para organizar y preparar multimedia en TrueNAS SCALE. Angular standalone y Signals, NestJS, SQLite, 7-Zip, MKVToolNix y MakeMKV en una imagen sin escritorio. Gopeed puede ejecutarse en un contenedor independiente para gestionar descargas desde Muxplorer. **El servidor procesa los datos y el navegador envía órdenes y recibe metadatos y progreso.**
 
 ## Arranque rápido con Docker
 
@@ -33,9 +33,25 @@ docker compose down
 - MakeMKV analiza una ISO o `BDMV/index.bdmv`, muestra títulos, duración, capítulos, tamaño y streams disponibles. Selecciona uno o más títulos y escribe el nombre de salida y el título del MKV. Para `index.bdmv` se propone el nombre de la carpeta del disco. Ambos campos se conservan y se pueden editar en la revisión final. Tras extraerlos, el trabajo solicita **revisión de las pistas reales generadas**. Confirma la selección definitiva para ejecutar un remux adicional y publicar los resultados. No se emparejan IDs del disco y MKV por heurísticas.
 - Las eliminaciones empiezan sin esperar a la cola y respetan los bloqueos de archivos en uso. Las operaciones completadas se contraen automáticamente y se pueden expandir. El panel Operaciones muestra etapas, progreso disponible, mensajes, resultados y errores. **Empezar** permite iniciar una tarea en cola junto a las activas, sin límite de tareas simultáneas. Los análisis preparados ofrecen **Elegir títulos** y los MKV temporales **Revisar pistas**. El icono **Quitar de operaciones** retira una tarea completada, fallida o cancelada, limpia sus temporales y conserva sus resultados y registro en SQLite. Puedes navegar mientras trabaja, cancelar, revisar MakeMKV o abrir el destino. El historial visible muestra los últimos 500 trabajos; SQLite conserva los registros anteriores.
 
+## Descargas con Gopeed
+
+En Docker local, configura `MUX_GOPEED_URL=http://gopeed:9999` y asigna a `MUX_GOPEED_TOKEN` un secreto aleatorio generado, por ejemplo, con `openssl rand -hex 32`. Guarda ambos valores en `.env` y activa el perfil de descargas.
+
+```sh
+docker compose --profile downloads up --build -d
+```
+
+Para detener ambos servicios, usa `docker compose --profile downloads down`.
+
+Abre **Descargas** desde la barra lateral o el icono de la cabecera en móvil. Pega hasta 20 enlaces HTTP, HTTPS o magnet de BitTorrent por lote. Puedes consultar el progreso, pausar, reanudar y cancelar. **Abrir en el explorador** selecciona el archivo o paquete publicado en Downloads. Desde ahí puedes extraer, abrir en los motores multimedia o moverlo a PlexMedia con los controles habituales.
+
+Gopeed conserva las tareas activas en `gopeed_storage` y escribe el contenido parcial en `gopeed_staging`, fuera de las raíces del explorador. NestJS consulta su API privada y SQLite conserva los identificadores y el estado de publicación. Al terminar, Muxplorer verifica los archivos esperados, prepara una copia privada y publica el archivo o carpeta en la raíz de Downloads con un renombrado atómico. Si el nombre existe añade un sufijo. La copia puede requerir espacio para el resultado tanto en el almacenamiento Docker como en Downloads. La tarea publicada pasa al historial de Muxplorer y se retira de Gopeed, lo que termina el seeding. **Eliminar** retira el registro y conserva el contenido publicado.
+
+Las descargas continúan con el navegador cerrado. Si se pierde la conexión con Gopeed, el explorador sigue disponible y la sección Descargas muestra el estado del motor. Conserva `/config`, `gopeed_storage` y `gopeed_staging` al actualizar. Gopeed carece de puerto publicado y NestJS se autentica por token. Gopeed puede alcanzar los destinos permitidos por la conectividad saliente del host, incluidas las redirecciones y los trackers. En despliegues con restricciones de salida, aplica esas reglas también al contenedor.
+
 ## Despliegue en TrueNAS SCALE
 
-El archivo `truenas-compose.yml` está preparado para instalar una Custom App mediante YAML, en versiones de SCALE que usan Docker Compose. No contiene `build:`. Sus montajes son exactamente:
+El archivo `truenas-compose.yml` está preparado para instalar una Custom App mediante YAML, en versiones de SCALE que usan Docker Compose. Monta los mismos dos datasets.
 
 ```yaml
 - /mnt/StevePool/Steve/Downloads:/data/downloads:rw
@@ -58,19 +74,22 @@ descarga la imagen antes de instalar (`docker pull`) y configura el cron
 Ve a **Apps → Discover Apps → Install via YAML**, pega `truenas-compose.yml`, revisa
 `user: "1000:1000"` y guarda. Abre `http://IP_DEL_NAS:8098` y crea el único administrador.
 
+Para activar Descargas en la Custom App, quita `profiles: [downloads]` del servicio `gopeed` y sustituye la referencia a `MUX_GOPEED_URL` por `http://gopeed:9999` y las tres referencias a `MUX_GOPEED_TOKEN` por el mismo secreto aleatorio. Guarda el YAML con acceso restringido y actualiza la aplicación conservando su nombre y sus volúmenes. Si gestionas la pila con Compose por consola, conserva el perfil y usa `.env` junto con `--profile downloads`. Gopeed prepara el propietario de sus dos volúmenes y el motor se ejecuta con UID/GID 1000:1000. Sus montajes de escritura se limitan a esos volúmenes y los temporales del contenedor.
+
 La compilación y publicación se realizan localmente desde el PC de desarrollo con
 `pnpm release:check`, `pnpm release:prepare` y `pnpm release:publish` (ver
 [docs/LOCAL_RELEASES.md](docs/LOCAL_RELEASES.md)). GitHub Actions valida PRs pero ya no
 publica imágenes en GHCR. Para fijar una versión exacta o volver atrás, sustituye `latest`
 por una etiqueta `sha-...` o versión publicada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.1.6 .`, exporta con `docker save -o muxplorer-0.1.6.tar muxplorer:0.1.6`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.1.6` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.2.0 .`, exporta con `docker save -o muxplorer-0.2.0.tar muxplorer:0.2.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.2.0` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
 ```sh
 docker compose config --quiet
-docker compose -f truenas-compose.yml config --quiet
+docker compose --profile downloads config --quiet
+docker compose -f truenas-compose.yml --profile downloads config --quiet
 ```
 
 ## UID/GID y ACL
@@ -116,7 +135,7 @@ El navegador sincroniza operaciones por HTTP cada dos segundos además de SSE y 
 - No se sobrescribe ningún nombre existente. En caso de conflicto, cambia el nombre o el destino. El MVP deliberadamente no ofrece reemplazo destructivo.
 - En Linux, renombrados y publicación usan `renameat2(RENAME_NOREPLACE)` con directorios padre abiertos sin seguir symlinks. Un movimiento en el mismo filesystem aprovecha el renombrado.
 - Entre filesystems se copia en streaming a un área privada `.muxplorer-<id>`, se sincroniza cada archivo y se verifica SHA-256 leyendo la copia. Se compara el manifiesto del origen antes de publicar y antes de eliminar. Un error conserva el origen; si el borrado final falla, el destino publicado se registra y el trabajo avisa del fallo.
-- Los árboles con enlaces simbólicos, hardlinks o archivos especiales se rechazan en las operaciones recursivas. Las rutas de API son pares `{root, path}` relativos, validados estrictamente. No existe API de descarga, subida, comandos arbitrarios ni navegación por el host.
+- Los árboles con enlaces simbólicos, hardlinks o archivos especiales se rechazan en las operaciones recursivas. Las rutas de API son pares `{root, path}` relativos, validados estrictamente. El gestor de descargas acepta enlaces y publica dentro de Downloads. Las operaciones del explorador se limitan a sus raíces configuradas.
 - 7-Zip se ejecuta confinado con **Landlock**, con permiso de escritura únicamente en el temporal. Se validan rutas antes y árbol después; los enlaces y nombres duplicados se rechazan. En un kernel sin aislamiento compatible la extracción falla de forma explícita. No se activa un fallback inseguro. ZIP/7z/RAR usan el motor oficial; tar.gz/tgz/tar.xz se descomprimen en dos etapas.
 - Los originales del remux y MakeMKV se conservan. La salida se inspecciona con MKVToolNix y se comprueba su número de pistas antes de publicarla.
 - Una selección de varios archivos/títulos puede completar algunos antes de fallar en otro. Los resultados publicados aparecen en el trabajo; no se revierten automáticamente.
@@ -175,13 +194,16 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.1.6 .
+docker build -t muxplorer:0.2.0 .
 pnpm test:docker
+pnpm test:downloads
 pnpm exec playwright install chromium
 pnpm test:acceptance
 ```
 
 `test:docker` crea un contenedor desechable con **dos tmpfs aislados** para fixtures. Verifica autenticación, CSRF, traversal/symlinks, operaciones de archivos, conflictos, extracción real ZIP/RAR/7z protegido/7z multipartes/tar.gz, remux con varias fuentes, nombres Unicode, selección de pistas y flags, SSE, historial después de reiniciar, UID sin root y healthcheck. Genera archivos pequeños y un RAR sin compresión válido; además se ha comprobado localmente la extracción de un RAR multivolumen de 256 MiB repartido en 17 partes; no accede al NAS. El contenedor se elimina al terminar. `MUXPLORER_KEEP_TEST_CONTAINER=true` permite retenerlo para depuración, con credenciales de prueba mostradas en la salida; no lo uses con datos reales.
+
+`test:downloads` levanta Muxplorer y Gopeed en una pila desechable, con un origen local de fixtures y volúmenes Docker de prueba. `test:acceptance` ejecuta también ese flujo con Playwright y comprueba el progreso y la selección del resultado desde móvil.
 
 `test:acceptance` añade once pruebas Playwright sobre ese mismo contenedor aislado: creación inicial del administrador sin token e inicio de sesión, operaciones básicas, remux desde el diálogo con subtítulos externos, extracción con selector y multiselección/arrastre/vista móvil y disponibilidad automática de los tres motores. Guarda capturas de verificación en `test-results/visual/`. Las pruebas multimedia de navegador solo aceptan nombres de contenedor `muxplorer-smoke-*`, para impedir que su siembra de fixtures se dirija accidentalmente al despliegue de producción. `test:e2e` permite repetir las pruebas básicas contra un servidor de test configurado con `MUXPLORER_URL`, `MUXPLORER_TEST_USERNAME` y `MUXPLORER_TEST_PASSWORD`; nunca lo apuntes a producción.
 

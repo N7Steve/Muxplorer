@@ -9,13 +9,60 @@ services:
       TZ: Europe/Madrid
       JOB_CONCURRENCY: '1'
       COOKIE_SECURE: 'false'
+      GOPEED_URL: ${MUX_GOPEED_URL:-}
+      GOPEED_API_TOKEN: ${MUX_GOPEED_TOKEN:-}
     volumes:
       - /mnt/StevePool/Steve/Downloads:/data/downloads:rw
       - /mnt/PlexPool/PlexMedia:/data/plex:rw
       - muxplorer_config:/config
+      - gopeed_staging:/download-staging
+    networks: [default, download-engine]
     restart: unless-stopped
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     stop_grace_period: 20s
+  gopeed:
+    profiles: [downloads]
+    image: liwei2633/gopeed:v1.9.3@sha256:3ad6274077eb81282f0782efb9824783bb2f969c3a4ce966f0d959cc53c23eae
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        test -n "$$GOPEED_APITOKEN"
+        chown "$$PUID:$$PGID" /app/storage /app/Downloads
+        ln -sf /dev/null /app/storage/logs/core.log
+        ln -sf /dev/null /app/storage/logs/extension.log
+        umask 027
+        exec su-exec "$$PUID:$$PGID" /app/gopeed
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      GOPEED_ADDRESS: 0.0.0.0
+      GOPEED_USERNAME: muxplorer
+      GOPEED_PASSWORD: ${MUX_GOPEED_TOKEN:-}
+      GOPEED_APITOKEN: ${MUX_GOPEED_TOKEN:-}
+      GOPEED_WHITEDOWNLOADDIRS: '/app/Downloads,/app/Downloads/*'
+      GOPEED_DOWNLOADCONFIG: '{"downloadDir":"/app/Downloads"}'
+    volumes:
+      - gopeed_storage:/app/storage
+      - gopeed_staging:/app/Downloads
+    tmpfs:
+      - /tmp:mode=1777
+      - /app/storage/logs:mode=0755
+    networks: [download-engine, download-egress]
+    read_only: true
+    restart: unless-stopped
+    stop_grace_period: 20s
+    logging:
+      driver: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
 volumes:
   muxplorer_config:
+  gopeed_storage:
+  gopeed_staging:
+networks:
+  default:
+  download-engine:
+    internal: true
+  download-egress:

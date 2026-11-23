@@ -16,6 +16,9 @@ const env = z
     MAKEMKV_BIN: z.string().default('makemkvcon'),
     SANDBOX_BIN: z.string().default('mux-sandbox'),
     RENAME_BIN: z.string().default('mux-rename'),
+    GOPEED_URL: z.string().default(''),
+    GOPEED_API_TOKEN: z.string().default(''),
+    GOPEED_STAGING_DIR: z.string().default('/download-staging'),
     MAKEMKV_HOME: z.string().optional(),
     LICENSE_FILE: z.string().default('/app/licenses/makemkv.txt'),
   })

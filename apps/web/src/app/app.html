@@ -54,7 +54,7 @@
       <mx-icon name="ShieldCheck" [size]="15" />Procesamiento local · Acceso protegido
     </div>
   </section>
-  <span class="login-version">MUXPLORER · 0.1.6</span>
+  <span class="login-version">MUXPLORER · 0.2.0</span>
 </main>
 } @else {
 <div class="app-shell">
@@ -70,6 +70,14 @@
     </div>
     }
     <div class="topbar-actions">
+      <button
+        class="icon-button mobile-workspace-toggle"
+        [attr.aria-label]="downloadsOpen() ? 'Explorador' : 'Descargas'"
+        [title]="downloadsOpen() ? 'Explorador' : 'Descargas'"
+        (click)="showDownloads(!downloadsOpen())"
+      >
+        <mx-icon [name]="downloadsOpen() ? 'PanelLeft' : 'Download'" [size]="18" />
+      </button>
       <button
         class="button ghost operations-toggle"
         (click)="jobsOpen.set(!jobsOpen())"
@@ -113,8 +121,20 @@
   <div class="workspace">
     <aside class="sidebar">
       <div class="section-label">ESPACIOS</div>
-      <button class="side-link selected" (click)="jobsOpen.set(false)">
+      <button
+        class="side-link"
+        [class.selected]="!downloadsOpen()"
+        aria-label="Explorador"
+        (click)="showDownloads(false)"
+      >
         <mx-icon name="PanelLeft" />Explorador<span class="side-marker"></span></button
+      ><button
+        class="side-link"
+        [class.selected]="downloadsOpen()"
+        aria-label="Descargas"
+        (click)="showDownloads(true)"
+      >
+        <mx-icon name="Download" />Descargas<span class="side-marker"></span></button
       ><button class="side-link" (click)="jobsOpen.set(true)">
         <mx-icon name="Layers" />Operaciones @if(activeCount()){<span class="subtle-count"
           >{{ activeCount() }}</span
@@ -140,10 +160,15 @@
             name="CircleHelp"
             [size]="14"
           /></button
-        ><span class="sidebar-version">MUXPLORER / 0.1.6</span>
+        ><span class="sidebar-version">MUXPLORER / 0.2.0</span>
       </div>
     </aside>
-    <main class="main-area">
+    @if (downloadsOpen()) {
+    <main class="main-area downloads-area">
+      <mx-downloads (reveal)="revealDownload($event)" />
+    </main>
+    }
+    <main class="main-area" [hidden]="downloadsOpen()">
       <div class="actionbar">
         <div class="action-group">
           <button class="button compact secondary" (click)="toolbar('mkdir')">
@@ -720,7 +745,7 @@
         }
       </dl>
       } @if(modal === 'settings'){
-      <p class="muted">Muxplorer 0.1.6 · Tus archivos se procesan en el servidor.</p>
+      <p class="muted">Muxplorer 0.2.0 · Tus archivos se procesan en el servidor.</p>
       <div class="tool-list">
         @if(api.system(); as system){@for(tool of toolKeys; track tool){
         <div class="tool-item">

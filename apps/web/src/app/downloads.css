@@ -1,0 +1,91 @@
+:host {
+  display: block;
+  width: 100%;
+  max-width: 66rem;
+  margin-inline: auto;
+  padding-bottom: 2rem;
+}
+.downloads-heading,
+.download-info,
+.download-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+h1 {
+  margin: 0 0 0.8rem;
+}
+.engine-state,
+.download-info span,
+.download-metrics,
+.downloads-message {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.engine-state {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.engine-state.online {
+  color: var(--green);
+}
+.download-form {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+}
+.download-form textarea {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  padding: 0.7rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+.download-form button {
+  justify-self: start;
+}
+.download-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.download-item {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 0.75rem;
+}
+.download-info strong {
+  overflow-wrap: anywhere;
+}
+progress {
+  width: 100%;
+  height: 0.6rem;
+  accent-color: var(--accent);
+}
+.download-actions,
+.download-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.4rem;
+}
+.download-pagination {
+  justify-content: center;
+  align-items: center;
+  margin-top: 1rem;
+}
+.failure {
+  color: var(--red);
+  overflow-wrap: anywhere;
+}

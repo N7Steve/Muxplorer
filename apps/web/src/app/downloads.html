@@ -1,0 +1,112 @@
+<header class="downloads-heading">
+  <h1>Descargas</h1>
+  @if (snapshot(); as current) {
+  <span class="engine-state" [class.online]="available()">
+    <span class="status-dot" [class.warning]="!available()"></span>
+    @switch (current.engine.status) { @case ('connected') { Gopeed {{ current.engine.version }} }
+    @case ('disabled') { Gopeed desactivado } @case ('connecting') { Conectando con Gopeed… }
+    @default { Gopeed desconectado } }
+  </span>
+  }
+</header>
+
+@if (statusMessage(); as message) {
+<p class="downloads-message" role="status">{{ message }}</p>
+}
+<form class="download-form" (ngSubmit)="add()">
+  <label for="download-links">Enlaces de descarga</label>
+  <textarea
+    id="download-links"
+    name="links"
+    rows="3"
+    placeholder="Introduce hasta 20 enlaces HTTP, HTTPS o magnet, uno por línea"
+    [(ngModel)]="input"
+    [disabled]="!available() || adding()"
+  ></textarea>
+  <button
+    class="button primary"
+    type="submit"
+    [disabled]="!available() || adding() || !input.trim()"
+  >
+    <mx-icon [name]="adding() ? 'LoaderCircle' : 'Plus'" [class.spinning]="adding()" [size]="17" />
+    Añadir descargas
+  </button>
+</form>
+
+@if (error()) {
+<p class="downloads-message failure" role="alert">{{ error() }}</p>
+} @if (snapshot(); as current) { @if (current.tasks.length) {
+<ul class="download-list" aria-label="Descargas">
+  @for (task of current.tasks; track task.id) { @let progress = percent(task);
+  <li class="download-item">
+    <div class="download-info">
+      <strong [title]="task.name">{{ task.name }}</strong>
+      <span>{{ states[task.status] }}</span>
+    </div>
+    <progress
+      [attr.value]="progress"
+      max="100"
+      [attr.aria-label]="'Progreso de ' + task.name"
+    ></progress>
+    <div class="download-metrics">
+      <span
+        >{{ bytes(task.downloaded) }} / {{ task.total || progress === 100 ? bytes(task.total) : '—'
+        }}</span
+      >
+      @if (progress !== null) { <span>{{ progress }} %</span> } @if (task.speed) {
+      <span>{{ bytes(task.speed) }}/s</span> } @if (eta(task); as remaining) {
+      <span>Restan {{ remaining }}</span> }
+    </div>
+    @if (task.error) {
+    <p class="failure">{{ task.error }}</p>
+    } @if (task.actions.length || task.result) {
+    <div class="download-actions">
+      @if (task.result) {
+      <button
+        class="button compact secondary"
+        (click)="open(task)"
+        [disabled]="busy().has(task.id)"
+      >
+        <mx-icon name="FolderOpen" [size]="16" />Abrir en el explorador
+      </button>
+      } @for (action of task.actions; track action) {
+      <button
+        class="button compact ghost"
+        [class.danger-hover]="action === 'cancel' || action === 'remove'"
+        [disabled]="busy().has(task.id)"
+        (click)="command(task, action)"
+      >
+        {{ labels[action] }}
+      </button>
+      }
+    </div>
+    }
+  </li>
+  }
+</ul>
+@if (pages() > 1) {
+<nav class="download-pagination" aria-label="Páginas de descargas">
+  <button class="button compact secondary" [disabled]="page() === 0" (click)="showPage(page() - 1)">
+    Anterior
+  </button>
+  <span>{{ page() + 1 }} / {{ pages() }}</span>
+  <button
+    class="button compact secondary"
+    [disabled]="page() + 1 >= pages()"
+    (click)="showPage(page() + 1)"
+  >
+    Siguiente
+  </button>
+</nav>
+} } @else {
+<div class="state-box">
+  <mx-icon name="Download" [size]="30" />
+  <strong>Sin descargas</strong>
+  @if (available()) { <span>Añade un enlace para empezar.</span> }
+</div>
+} } @else if (!loadingError()) {
+<div class="state-box" role="status">
+  <mx-icon name="LoaderCircle" class="spinning" [size]="24" />
+  <span>Cargando descargas…</span>
+</div>
+}
