@@ -12,3 +12,7 @@ playwright-report/
 *.sqlite*
 docker/makemkv/*.tar.gz
 docker/makemkv/accept-eula
+tmp/
+
+__pycache__/
+*.pyc

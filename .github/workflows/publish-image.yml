@@ -1,28 +1,22 @@
-name: Validate and publish Docker image
+name: Validate Docker image
 
 on:
-  push:
-    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-image-${{ github.ref }}
-  cancel-in-progress: false
+  group: validate-image-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  publish:
-    if: github.repository == 'N7Steve/Muxplorer'
+  validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
       contents: read
-      packages: write
-    env:
-      IMAGE: ghcr.io/n7steve/muxplorer
-      REVISION: ${{ github.sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -39,6 +33,7 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Validate source
         run: |
+          python3 -m unittest discover -s scripts/tests
           pnpm test
           pnpm lint
           pnpm typecheck
@@ -65,19 +60,3 @@ jobs:
         env:
           MUXPLORER_IMAGE: muxplorer:ci
         run: pnpm test:acceptance
-      - name: Sign in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish the tested image
-        run: |
-          docker tag muxplorer:ci "$IMAGE:sha-$REVISION"
-          VERSION=$(node -p "require('./apps/api/package.json').version")
-          docker tag muxplorer:ci "$IMAGE:$VERSION"
-          docker tag muxplorer:ci "$IMAGE:latest"
-          docker push "$IMAGE:sha-$REVISION"
-          docker push "$IMAGE:$VERSION"
-          docker push "$IMAGE:latest"
-          echo "Published $IMAGE:$VERSION, $IMAGE:latest and $IMAGE:sha-$REVISION" >> "$GITHUB_STEP_SUMMARY"

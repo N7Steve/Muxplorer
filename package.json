@@ -6,6 +6,9 @@
     "node": ">=24.15.0 <27"
   },
   "scripts": {
+    "release:check": "python scripts/release-local.py check",
+    "release:prepare": "python scripts/release-local.py prepare",
+    "release:publish": "python scripts/release-local.py publish",
     "build": "pnpm --filter @muxplorer/api build && pnpm --filter @muxplorer/web build",
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "test": "pnpm --filter @muxplorer/api test",
