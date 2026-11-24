@@ -35,7 +35,7 @@ export interface Download {
 export type DownloadAccountProvider =
   '1fichier' | 'mega' | 'real-debrid' | 'terabox' | 'nitroflare' | 'rapidgator' | 'katfile';
 export type DownloadAccountStatus =
-  'unchecked' | 'connected' | 'invalid' | 'unavailable' | 'captcha';
+  'unchecked' | 'connected' | 'invalid' | 'unavailable' | 'captcha' | 'restricted' | 'rate-limited';
 export interface DownloadAccount {
   id: string;
   provider: DownloadAccountProvider;

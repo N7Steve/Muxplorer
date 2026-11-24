@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.4.1
+
+- Distingue las credenciales rechazadas, los bloqueos de acceso y los límites de solicitudes de 1fichier.
+- Indica qué variable de configuración falta cuando Gopeed está desactivado.
+
 ## 0.4.0
 
 - Añade cuentas de TeraBox, Nitroflare, Rapidgator y KatFile con comprobación de credenciales y selección automática por enlace.

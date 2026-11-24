@@ -47,7 +47,7 @@ Abre **Descargas**, pega los enlaces y pulsa **Comprobar enlaces**. El capturado
 
 En **Ajustes → Cuentas**, añade las cuentas de tus alojamientos. Muxplorer verifica las credenciales al guardar, muestra el resultado y la hora, y permite comprobarlas de nuevo. El gestor elige por enlace una cuenta del alojamiento, prueba Real-Debrid cuando el dominio es compatible y usa el acceso público cuando está disponible.
 
-- **1fichier** usa una clave API de una cuenta con acceso a la API de descargas.
+- **1fichier** usa la clave API de una cuenta con acceso a la API de descargas. El correo puede usarse como nombre para identificar la cuenta. El proveedor limita la comprobación a una por minuto por IP y una cada cinco minutos por cuenta.
 - **MEGA** admite enlaces compartidos de archivos y carpetas con su clave de descifrado. Puedes descargar como invitado o usar una cuenta con correo y contraseña. El inicio de sesión con verificación en dos pasos queda fuera de esta versión. Al reanudar una transferencia de MEGA se vuelve a descargar desde el principio para verificar la integridad del contenido.
 - **Real-Debrid** usa un token API y genera un enlace directo de los alojamientos admitidos por tu cuenta.
 - **Rapidgator** usa correo y contraseña. **Nitroflare** usa correo y una clave prémium.
@@ -89,13 +89,15 @@ Ve a **Apps → Discover Apps → Install via YAML**, pega `truenas-compose.yml`
 
 Para activar Descargas en la Custom App, quita `profiles: [downloads]` del servicio `gopeed` y sustituye la referencia a `MUX_GOPEED_URL` por `http://gopeed:9999` y las tres referencias a `MUX_GOPEED_TOKEN` por el mismo secreto aleatorio. Guarda el YAML con acceso restringido y actualiza la aplicación conservando su nombre y sus volúmenes. Si gestionas la pila con Compose por consola, conserva el perfil y usa `.env` junto con `--profile downloads`. Gopeed prepara el propietario de sus dos volúmenes y el motor se ejecuta con UID/GID 1000:1000. Sus montajes de escritura se limitan a esos volúmenes y los temporales del contenedor.
 
+Si aparece **Gopeed desactivado**, revisa `GOPEED_URL` en el YAML de la aplicación instalada. El actualizador cambia la imagen y conserva ese YAML, por lo que habilitar Gopeed requiere editar la configuración de la Custom App.
+
 La compilación y publicación se realizan localmente desde el PC de desarrollo con
 `pnpm release:check`, `pnpm release:prepare` y `pnpm release:publish` (ver
 [docs/LOCAL_RELEASES.md](docs/LOCAL_RELEASES.md)). GitHub Actions valida PRs pero ya no
 publica imágenes en GHCR. Para fijar una versión exacta o volver atrás, sustituye `latest`
 por una etiqueta `sha-...` o versión publicada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.4.0 .`, exporta con `docker save -o muxplorer-0.4.0.tar muxplorer:0.4.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.4.0` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.4.1 .`, exporta con `docker save -o muxplorer-0.4.1.tar muxplorer:0.4.1`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.4.1` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -207,7 +209,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.4.0 .
+docker build -t muxplorer:0.4.1 .
 pnpm test:docker
 pnpm test:downloads
 pnpm exec playwright install chromium

@@ -23,6 +23,7 @@ import { Processes } from '../src/process';
 import { GopeedDownloadProvider, engineDirectory } from '../src/gopeed';
 import { ProviderError, type EngineTask } from '../src/download-provider';
 import { DownloadAccounts } from '../src/download-accounts';
+import { DownloadHosts } from '../src/download-hosts';
 import { DownloadRouting } from '../src/download-routing';
 import { MegaDownloads } from '../src/mega-downloads';
 
@@ -166,6 +167,38 @@ test('download accounts protect credentials and resolve premium links at the cor
   );
   accounts.remove(fichier.id);
   assert.throws(() => routing.validate('https://1fichier.com/?test', fichier.id), /ya no existe/);
+});
+
+test('1fichier distinguishes authentication errors, access restrictions and rate limits', async (t) => {
+  const hosts = new DownloadHosts();
+  const account = {
+    id: randomUUID(),
+    label: '1fichier fixture',
+    provider: '1fichier' as const,
+    secret: 'fixture-api-key',
+  };
+  let response = Response.json({ status: 'OK' });
+  const fetch = t.mock.method(
+    globalThis,
+    'fetch',
+    async (input: URL | string, init: RequestInit) => {
+      assert.equal(new URL(input).hostname, 'api.1fichier.com');
+      assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer fixture-api-key');
+      return response.clone();
+    },
+  );
+  assert.equal(await hosts.verify(account), 'connected');
+  response = Response.json({ status: 'KO', message: 'Not authenticated #247' }, { status: 401 });
+  assert.equal(await hosts.verify(account), 'invalid');
+  response = new Response('Forbidden', { status: 403 });
+  assert.equal(await hosts.verify(account), 'restricted');
+  response = Response.json({ status: 'KO', message: 'Too many requests' }, { status: 429 });
+  assert.equal(await hosts.verify(account), 'rate-limited');
+  await assert.rejects(
+    hosts.direct(new URL('https://1fichier.com/?fixture'), account, true),
+    /limitó las solicitudes/,
+  );
+  assert.equal(fetch.mock.callCount(), 5);
 });
 
 test('checks new accounts and routes a mixed set of links independently', async (t) => {

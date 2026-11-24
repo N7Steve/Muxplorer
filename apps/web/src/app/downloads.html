@@ -135,6 +135,12 @@
         [disabled]="saving()"
       />
     </label>
+    @if (draft.provider === '1fichier') {
+    <p class="download-path">
+      1fichier autentica con la clave API. Puedes usar el correo como nombre para identificar la
+      cuenta.
+    </p>
+    }
     <div class="download-toolbar">
       <button
         class="button compact primary"

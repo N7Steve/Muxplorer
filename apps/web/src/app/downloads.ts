@@ -92,6 +92,8 @@ export class DownloadsView implements OnInit, OnDestroy {
     invalid: 'Credenciales rechazadas',
     unavailable: 'Proveedor sin confirmar',
     captcha: 'CAPTCHA requerido',
+    restricted: 'El proveedor denegó el acceso a la API',
+    'rate-limited': 'Demasiadas comprobaciones. Espera antes de volver a comprobar.',
   };
   readonly linkStates: Record<DownloadLinkStatus, string> = {
     online: 'En línea',

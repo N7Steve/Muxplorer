@@ -100,7 +100,12 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       const record = JSON.parse(String(data)) as RecordData;
       this.records.set(record.id, record);
     }
-    this.engine = { status: engineUrl ? 'connecting' : 'disabled' };
+    this.engine = engineUrl
+      ? { status: 'connecting' }
+      : {
+          status: 'disabled',
+          message: 'Configura GOPEED_URL en el servidor para activar el motor de descargas.',
+        };
   }
 
   onModuleInit() {

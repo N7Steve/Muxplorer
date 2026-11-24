@@ -84,7 +84,7 @@ async function request(
     throw captcha();
   }
   const data = object.safeParse(await response.json().catch(() => null)).data;
-  if (response.status === 403 && !data) throw new Error();
+  if (response.status === 403 && !data && base !== fichier) throw new Error();
   return { http: response.status, data: data ?? {} };
 }
 
@@ -100,16 +100,22 @@ function accepted(http: number) {
   if (http < 200 || http >= 300) throw new Error();
 }
 
-function fichierError(data: Json) {
+function fichierError(http: number, data: Json, checkingFile = false) {
   const message = String(data.message ?? '');
-  if (/not found|does not exist|deleted/i.test(message)) throw missing();
+  if (http === 429 || /too many requests|rate limit|requests? too frequent/i.test(message))
+    throw new AccountRejected('rate-limited');
+  if (/captcha/i.test(message)) throw captcha();
   if (
-    /invalid (api )?key|key (?:is )?not valid|unauthori[sz]ed|authentication|not authenticated/i.test(
+    http === 403 ||
+    /(?:ip|country|account).*(?:blocked|banned|restricted)|(?:access|permission) denied/i.test(
       message,
     )
   )
+    throw new AccountRejected('restricted');
+  if (http === 401 || /invalid (api )?key|key (?:is )?not valid|not authenticated/i.test(message))
     throw new AccountRejected('invalid');
-  if (/captcha/i.test(message)) throw captcha();
+  if (checkingFile && (http === 404 || /not found|does not exist|deleted/i.test(message)))
+    throw missing();
 }
 
 export class DownloadHosts {
@@ -244,9 +250,8 @@ export class DownloadHosts {
             undefined,
             post(account.secret, {}),
           );
-          fichierError(data);
-          accepted(http);
-          if (data.status !== 'OK') throw new Error();
+          fichierError(http, data);
+          if (http < 200 || http >= 300 || data.status !== 'OK') throw new Error();
           break;
         }
         case 'real-debrid': {
@@ -341,9 +346,12 @@ export class DownloadHosts {
               undefined,
               post(account.secret, { url }),
             );
-            if (info.http === 404) throw missing();
-            fichierError(info.data);
-            if (info.data.status === 'OK' && typeof info.data.filename === 'string')
+            fichierError(info.http, info.data, true);
+            if (
+              info.http === 200 &&
+              info.data.status === 'OK' &&
+              typeof info.data.filename === 'string'
+            )
               return { link: url, name: info.data.filename, total: Number(info.data.size) || 0 };
           }
           const { http, data } = await request(
@@ -352,10 +360,8 @@ export class DownloadHosts {
             undefined,
             post(account.secret, { url, restrict_ip: 1 }),
           );
-          if (http === 404) throw missing();
-          fichierError(data);
-          accepted(http);
-          if (data.status !== 'OK') throw new Error();
+          fichierError(http, data, true);
+          if (http < 200 || http >= 300 || data.status !== 'OK') throw new Error();
           result = { link: text.parse(data.url) };
           break;
         }
@@ -432,8 +438,17 @@ export class DownloadHosts {
       return { ...result, link: parsed.href };
     } catch (error) {
       if (error instanceof HostDownloadError) throw error;
-      if (error instanceof AccountRejected)
+      if (error instanceof AccountRejected) {
+        if (error.status === 'rate-limited')
+          throw new HostDownloadError(
+            '1fichier limitó las solicitudes. Vuelve a intentarlo más tarde.',
+          );
+        if (error.status === 'restricted')
+          throw new HostDownloadError(
+            '1fichier denegó el acceso. Revisa los permisos de API de la cuenta.',
+          );
         throw new HostDownloadError('La cuenta fue rechazada o caducó.', 'account-required');
+      }
       throw new HostDownloadError(
         'El proveedor no pudo preparar el archivo. Comprueba la cuenta, la cuota y el enlace.',
       );

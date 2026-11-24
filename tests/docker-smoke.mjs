@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-docker-'));
 const name = `muxplorer-smoke-${Date.now()}`;
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.4.0';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.4.1';
 const keep = process.env.MUXPLORER_KEEP_TEST_CONTAINER === 'true';
 const password = 'Muxplorer-test-password-2026';
 const username = 'mux-admin';
@@ -144,7 +144,9 @@ try {
   await request('auth/login', { username: 'wrong-user', password }, 401);
   await request('auth/login', { username, password: 'Wrong-password-2026' }, 401);
   assert.equal((await request('roots')).length, 2);
-  assert.deepEqual(await request('downloads/status'), { status: 'disabled' });
+  const disabledDownloads = await request('downloads/status');
+  assert.equal(disabledDownloads.status, 'disabled');
+  assert.match(disabledDownloads.message, /GOPEED_URL/);
   const denied = await fetch(`${base}/api/files/mkdir`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
