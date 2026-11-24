@@ -30,13 +30,39 @@ export interface Download {
   error?: string;
   result?: Location;
   destination?: Location;
+  multipart?: DownloadPart & { expected: number };
 }
-export type DownloadAccountProvider = '1fichier' | 'mega' | 'real-debrid';
+export type DownloadAccountProvider =
+  '1fichier' | 'mega' | 'real-debrid' | 'terabox' | 'nitroflare' | 'rapidgator' | 'katfile';
+export type DownloadAccountStatus =
+  'unchecked' | 'connected' | 'invalid' | 'unavailable' | 'captcha';
 export interface DownloadAccount {
   id: string;
   provider: DownloadAccountProvider;
   label: string;
   email?: string;
+  status?: DownloadAccountStatus;
+  checkedAt?: string;
+}
+export type DownloadLinkStatus = 'online' | 'offline' | 'captcha' | 'account-required' | 'unknown';
+export interface DownloadLinkCheck {
+  status: DownloadLinkStatus;
+  name?: string;
+  total?: number;
+  message?: string;
+  multipart?: DownloadPart;
+}
+export interface DownloadPart {
+  key: string;
+  name: string;
+  part: number;
+}
+export interface DownloadGroup {
+  id: string;
+  name: string;
+  tasks: Download[];
+  expected?: number;
+  missing?: number;
 }
 export interface DownloadSettings {
   destination: Location;
@@ -45,6 +71,7 @@ export interface DownloadSettings {
 export interface DownloadsPage {
   engine: DownloadEngine;
   tasks: Download[];
+  groups: DownloadGroup[];
   total: number;
   active?: number;
   speed?: number;

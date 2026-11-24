@@ -41,8 +41,26 @@ test('Descargas recibe progreso, conserva el explorador y selecciona el resultad
     .click();
   await page.getByRole('button', { name: 'Usar esta carpeta' }).click();
   const links = page.getByLabel('Enlaces de descarga');
-  await links.fill('http://fixture:8080/browser.txt\nhttp://fixture:8080/slow.bin');
-  await page.getByRole('button', { name: 'Añadir descargas' }).click();
+  await links.fill(
+    [
+      'http://fixture:8080/browser.txt',
+      'http://fixture:8080/slow.bin',
+      'http://fixture:8080/browser.part01.rar',
+      'http://fixture:8080/browser.part03.rar',
+      ...Array.from({ length: 21 }, (_, index) => 'http://fixture:8080/missing-' + index + '.bin'),
+    ].join('\n'),
+  );
+  await page.getByRole('button', { name: 'Comprobar enlaces' }).click();
+  const captured = page.getByRole('region', { name: 'Enlaces capturados' });
+  await expect(captured.getByText('25 de 25 comprobados · 4 en línea')).toBeVisible();
+  await expect(captured.getByText('Fuera de línea')).toHaveCount(21);
+  await expect(captured.getByText('Paquete incompleto')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Añadir seleccionados a descargas' }).click();
+  const queue = page.getByRole('list', { name: 'Descargas', exact: true });
+  await expect(queue.getByText('Paquete incompleto · 1 pendientes')).toBeVisible();
+  await queue.getByText('browser.rar', { exact: true }).click();
+  await expect(queue.getByText('browser.part03.rar', { exact: true })).toBeVisible();
   const slow = page.getByRole('listitem').filter({ hasText: 'slow.bin' }).first();
   await expect(slow.getByText('Descargando')).toBeVisible({ timeout: 15_000 });
   await expect(slow.getByText(/Restan/)).toBeVisible({ timeout: 15_000 });

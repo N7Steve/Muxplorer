@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.4.0
+
+- Añade cuentas de TeraBox, Nitroflare, Rapidgator y KatFile con comprobación de credenciales y selección automática por enlace.
+- Comprueba la disponibilidad de los enlaces antes de enviarlos a la cola y elimina el límite de 20 por lote.
+- Agrupa los volúmenes numerados y avisa de las partes que faltan en un paquete.
+
 ## 0.3.0
 
 - Ajustes de descargas con carpeta predeterminada en Downloads o PlexMedia y destino alternativo para cada lote.

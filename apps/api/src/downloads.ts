@@ -14,6 +14,8 @@ import type {
   Download,
   DownloadAction,
   DownloadEngine,
+  DownloadGroup,
+  DownloadLinkCheck,
   DownloadsPage,
   DownloadStatus,
   Location,
@@ -35,6 +37,7 @@ import {
 } from './download-provider';
 import { childLocation, safeName } from './paths';
 import { Store } from './store';
+import { downloadPart, nameFromLink } from './download-parts';
 
 interface RecordData {
   id: string;
@@ -50,6 +53,7 @@ interface RecordData {
   total?: number;
   destination?: Location;
   downloadError?: string;
+  expectedParts?: number;
 }
 
 const creationGrace = 30_000;
@@ -381,6 +385,9 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       actions: [],
       destination: record.destination,
     };
+    const part = downloadPart(record.name ?? '') ?? downloadPart(result.name);
+    if (part)
+      result.multipart = { ...part, expected: Math.max(part.part, record.expectedParts ?? 0) };
     if (record.phase === 'completed' && record.publication) {
       result.status = 'completed';
       result.name = record.publication.target;
@@ -445,20 +452,46 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       .map((record) => this.view(record));
     const active = tasks.filter((task) => activeStates.includes(task.status));
     const search = query.toLocaleLowerCase('es');
-    const matches = tasks.filter(
-      (task) =>
-        task.name.toLocaleLowerCase('es').includes(search) &&
-        (filter === 'all' ||
-          (filter === 'active'
-            ? activeStates.includes(task.status)
-            : filter === 'issues'
-              ? issueStates.includes(task.status)
-              : task.status === filter)),
-    );
+    const matches = (task: Download) =>
+      (task.name.toLocaleLowerCase('es').includes(search) ||
+        task.multipart?.name.toLocaleLowerCase('es').includes(search)) &&
+      (filter === 'all' ||
+        (filter === 'active'
+          ? activeStates.includes(task.status)
+          : filter === 'issues'
+            ? issueStates.includes(task.status)
+            : task.status === filter));
+    const groups = new Map<string, DownloadGroup>();
+    for (const task of tasks) {
+      const part = task.multipart;
+      const id = part
+        ? JSON.stringify([task.destination ?? defaultDownloadDestination, part.key])
+        : task.id;
+      let group = groups.get(id);
+      if (!group) {
+        group = { id, name: part?.name ?? task.name, tasks: [] };
+        groups.set(id, group);
+      }
+      group.tasks.push(task);
+      if (part) group.expected = Math.max(group.expected ?? 0, part.expected);
+    }
+    const filtered = [...groups.values()].filter((group) => group.tasks.some(matches));
+    const pageGroups = filtered.slice(page * limit, (page + 1) * limit);
+    for (const group of pageGroups) {
+      if (!group.expected) continue;
+      group.tasks.sort((a, b) => a.multipart!.part - b.multipart!.part);
+      const parts = new Set(
+        group.tasks
+          .filter((task) => task.status !== 'cancelled' && !issueStates.includes(task.status))
+          .map((task) => task.multipart!.part),
+      );
+      group.missing = group.expected - parts.size;
+    }
     return {
       engine: this.engine,
-      tasks: matches.slice(page * limit, (page + 1) * limit),
-      total: matches.length,
+      tasks: pageGroups.flatMap((group) => group.tasks),
+      groups: pageGroups,
+      total: filtered.length,
       active: active.length,
       speed: active.reduce((sum, task) => sum + task.speed, 0),
     };
@@ -500,7 +533,26 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  add(links: { id: string; url: string }[], override?: Location, accountId?: string) {
+  async check(url: string): Promise<DownloadLinkCheck> {
+    this.requireEngine();
+    const result: DownloadLinkCheck = (await this.provider.check?.(url)) ?? { status: 'unknown' };
+    const name = result.name ?? nameFromLink(url);
+    try {
+      return {
+        ...result,
+        name: name && safeName(name),
+        multipart: name ? downloadPart(name) : undefined,
+      };
+    } catch {
+      return { ...result, name: undefined };
+    }
+  }
+
+  add(
+    links: { id: string; url: string; name?: string; expectedParts?: number }[],
+    override?: Location,
+    accountId?: string,
+  ) {
     return this.serial(async () => {
       this.requireEngine();
       const destination = override ?? this.destination();
@@ -519,21 +571,34 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       )
         await this.checkDestination(destination);
       const ids: string[] = [];
-      for (const { id, url } of links) {
+      const canReuse = (record: RecordData) =>
+        !record.intent &&
+        (record.phase === 'creating' ||
+          (record.phase === 'active' && !issueStates.includes(this.view(record).status)));
+      const candidates = new Map<string, string>();
+      for (const record of this.records.values()) {
+        if (
+          sameLocation(record.destination ?? defaultDownloadDestination, destination) &&
+          canReuse(record) &&
+          !candidates.has(record.digest)
+        )
+          candidates.set(record.digest, record.id);
+      }
+      for (const { id, url, name, expectedParts } of links) {
         const key = digest(url, accountId);
-        const direct = this.records.get(id);
+        const candidate = this.records.get(candidates.get(key) ?? '');
         const existing =
-          direct ??
-          [...this.records.values()].find(
-            (record) =>
-              record.digest === key &&
-              sameLocation(record.destination ?? defaultDownloadDestination, destination) &&
-              !record.intent &&
-              (record.phase === 'creating' ||
-                (record.phase === 'active' && !issueStates.includes(this.view(record).status))),
-          );
+          this.records.get(id) ?? (candidate && canReuse(candidate) ? candidate : undefined);
         if (existing) {
           ids.push(existing.id);
+          if (
+            existing.id !== this.publishingId &&
+            expectedParts &&
+            expectedParts > (existing.expectedParts ?? 0) &&
+            name &&
+            downloadPart(name)
+          )
+            this.save({ ...existing, name, expectedParts });
           continue;
         }
         let record: RecordData = {
@@ -542,6 +607,8 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
           phase: 'creating',
           createdAt: new Date().toISOString(),
           destination,
+          name: name ?? nameFromLink(url),
+          expectedParts,
         };
         try {
           await this.files.createStage(id);
@@ -556,6 +623,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
           const engineId = await this.provider.add(url, id, accountId);
           record = { ...record, engineId, phase: 'active' };
           this.save(record);
+          candidates.set(key, id);
         } catch (error) {
           if (
             error instanceof HostDownloadError ||
@@ -563,6 +631,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
             (error instanceof ProviderError && ['rejected', 'auth'].includes(error.kind))
           )
             this.save({ ...record, phase: 'rejected', downloadError: error.message });
+          else candidates.set(key, id);
         }
       }
       return { ids };

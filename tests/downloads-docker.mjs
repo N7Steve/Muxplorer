@@ -8,7 +8,7 @@ import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-dl-'));
 const project = 'mux-dl-' + Date.now();
 const fixture = project + '-fixture';
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.3.0';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.4.0';
 const token = randomBytes(32).toString('hex');
 const username = 'download-admin';
 const password = 'Muxplorer-download-test-2026';
@@ -63,6 +63,10 @@ const fixtureCode = String.raw`
   const http = require('node:http');
   http.createServer((req, res) => {
     const name = new URL(req.url, 'http://fixture').pathname.slice(1);
+    if (name.startsWith('missing')) {
+      res.writeHead(404).end();
+      return;
+    }
     if (name === 'local.torrent') {
       const data = Buffer.from(process.argv[1], 'base64');
       res.writeHead(200, { 'Content-Type': 'application/x-bittorrent', 'Content-Length': data.length });

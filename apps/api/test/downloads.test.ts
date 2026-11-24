@@ -168,6 +168,152 @@ test('download accounts protect credentials and resolve premium links at the cor
   assert.throws(() => routing.validate('https://1fichier.com/?test', fichier.id), /ya no existe/);
 });
 
+test('checks new accounts and routes a mixed set of links independently', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mux-download-hosts-'));
+  const store = new Store(root);
+  t.after(async () => {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const accounts = new DownloadAccounts(store);
+  const engine = new GopeedDownloadProvider('http://gopeed:9999', 'engine-secret');
+  const routing = new DownloadRouting(
+    engine,
+    new MegaDownloads(
+      store,
+      accounts,
+      new DownloadPublication(new Files(new Paths(), new Processes())),
+    ),
+    accounts,
+  );
+  const links = [
+    'https://rapidgator.net/file/123/Movie.part1.rar.html',
+    'https://nitroflare.com/view/1AB/Movie.part2.rar',
+    'https://www.terabox.com/s/1share',
+    'https://katfile.com/abcdefghijkl',
+    'https://supported.example.org/share',
+    'https://standalone.example.org/local',
+  ];
+  const transfers: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (input: URL | string, init: RequestInit) => {
+    const url = new URL(input);
+    assert.equal(init.redirect, 'error');
+    switch (url.hostname) {
+      case 'rapidgator.net':
+        if (url.pathname.endsWith('/login')) {
+          assert.equal(url.searchParams.get('password'), 'premium-password');
+          return Response.json({ status: 200, response: { token: 'session-test' } });
+        }
+        assert.equal(url.searchParams.get('token'), 'session-test');
+        return Response.json({
+          status: 200,
+          response: url.pathname.endsWith('/file/info')
+            ? { file: { name: 'Movie.part1.rar', size: 12 } }
+            : { download_url: 'https://cdn.example.org/rapid' },
+        });
+      case 'nitroflare.com':
+        if (url.pathname.endsWith('/getFileInfo'))
+          return Response.json({
+            result: {
+              files: {
+                [url.searchParams.get('files')!]: {
+                  status: 'online',
+                  name: 'Movie.part2.rar',
+                  size: 12,
+                },
+              },
+            },
+          });
+        if (url.pathname.endsWith('/getKeyInfo')) {
+          assert.equal(url.searchParams.get('premiumKey'), 'nitro-key');
+          return Response.json({ result: { status: 'active' } });
+        }
+        if (url.searchParams.get('file') === 'CHALLENGE')
+          return Response.json({ type: 'error', code: 12 });
+        return Response.json({ result: { url: 'https://cdn.example.org/nitro' } });
+      case 'www.terabox.com':
+        assert.equal(url.searchParams.get('access_tokens'), 'open-token');
+        if (url.pathname.endsWith('/uinfo')) return Response.json({ errno: 0, uk: '1' });
+        if (url.pathname.endsWith('/share/list'))
+          return Response.json({
+            errno: 0,
+            uk: '1',
+            shareid: '2',
+            list: [{ fs_id: 3, server_filename: 'tera.bin', isdir: 0, size: 8 }],
+          });
+        assert.equal(url.searchParams.get('fid_list'), '[3]');
+        return Response.json({ errno: 0, list: [{ dlink: 'https://cdn.example.org/tera' }] });
+      case 'katfile.com':
+        if (url.searchParams.get('key') === 'bad-key')
+          return Response.json({
+            status: 400,
+            msg: 'Invalid key',
+          });
+        if (url.pathname.endsWith('/account/info'))
+          return Response.json({ status: 200, result: {} });
+        return Response.json({
+          msg: 'OK',
+          result: { url: 'https://cdn.example.org/kat', size: 12 },
+        });
+      case 'api.real-debrid.com':
+        if (url.pathname.endsWith('/user')) return Response.json({ username: 'test' });
+        if (url.pathname.endsWith('/hosts/domains'))
+          return Response.json(['supported.example.org']);
+        assert.equal(new URLSearchParams(String(init.body)).get('link'), links[4]);
+        return Response.json({ download: 'https://cdn.example.org/debrid' });
+      case 'gopeed': {
+        const link = JSON.parse(String(init.body)).req.url;
+        if (url.pathname.endsWith('/resolve')) {
+          if (link.endsWith('/missing'))
+            return Response.json({
+              code: 1000,
+              msg: 'http request fail, code:404',
+              data: null,
+            });
+          return Response.json({ code: 0, data: { res: fixture('fixture').resource } });
+        }
+        transfers.push(link);
+        return Response.json({ code: 0, data: 'gopeed-task' });
+      }
+      default:
+        throw new Error('Unexpected request: ' + url.hostname);
+    }
+  });
+  const email = 'fixture@example.org';
+  const providers = [
+    { provider: 'rapidgator', email, secret: 'premium-password' },
+    { provider: 'nitroflare', email, secret: 'nitro-key' },
+    { provider: 'terabox', secret: 'open-token' },
+    { provider: 'katfile', secret: 'kat-key' },
+    { provider: 'real-debrid', secret: 'rd-token' },
+  ] as const;
+  for (const provider of providers) {
+    const list = await routing.saveAccount({ ...provider, label: provider.provider });
+    assert.equal(list.at(-1)?.status, 'connected');
+    assert.ok(list.at(-1)?.checkedAt);
+    assert.equal('secret' in list.at(-1)!, false);
+  }
+  const invalid = await routing.saveAccount({
+    provider: 'katfile',
+    label: 'Invalid',
+    secret: 'bad-key',
+  });
+  assert.equal(invalid.at(-1)?.status, 'invalid');
+  assert.equal((await routing.check(links[0])).name, 'Movie.part1.rar');
+  assert.equal((await routing.check(links[1])).name, 'Movie.part2.rar');
+  assert.equal((await routing.check('https://nitroflare.com/view/CHALLENGE')).status, 'captcha');
+  assert.equal((await routing.check('https://standalone.example.org/missing')).status, 'offline');
+  for (const link of links) await routing.add(link, randomUUID());
+  assert.deepEqual(transfers, [
+    'https://cdn.example.org/rapid',
+    'https://cdn.example.org/nitro',
+    'https://cdn.example.org/tera',
+    'https://cdn.example.org/kat',
+    'https://cdn.example.org/debrid',
+    links[5],
+  ]);
+});
+
 test('deduplicates concurrent submissions and reconciles an uncertain POST after restart', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'mux-downloads-'));
   class IsolatedVolume extends DownloadPublication {

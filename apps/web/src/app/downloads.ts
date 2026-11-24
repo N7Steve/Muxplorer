@@ -9,13 +9,16 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import type {
   Download,
   DownloadAccount,
   DownloadAccountProvider,
+  DownloadAccountStatus,
   DownloadAction,
   DownloadSettings,
+  DownloadLinkCheck,
+  DownloadLinkStatus,
   DownloadStatus,
   DownloadsPage,
   Location,
@@ -25,9 +28,15 @@ import { Explorer } from './explorer';
 import { Icon } from './icon';
 
 interface Submission {
-  links: { id: string; url: string }[];
-  accountId?: string;
+  links: { id: string; url: string; name?: string; expectedParts?: number }[];
   destination?: Location;
+}
+
+interface CapturedLink {
+  id: string;
+  url: string;
+  check?: DownloadLinkCheck;
+  selected: boolean;
 }
 
 function requestId() {
@@ -47,7 +56,7 @@ function requestId() {
 
 @Component({
   selector: 'mx-downloads',
-  imports: [DatePipe, Explorer, FormsModule, Icon],
+  imports: [DatePipe, Explorer, FormsModule, Icon, NgTemplateOutlet],
   templateUrl: './downloads.html',
   styleUrl: './downloads.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -71,11 +80,67 @@ export class DownloadsView implements OnInit, OnDestroy {
     '1fichier': '1fichier',
     mega: 'MEGA',
     'real-debrid': 'Real-Debrid',
+    terabox: 'TeraBox',
+    nitroflare: 'Nitroflare',
+    rapidgator: 'Rapidgator',
+    katfile: 'KatFile',
+  };
+  readonly providerOptions = Object.entries(this.providers);
+  readonly accountStates: Record<DownloadAccountStatus, string> = {
+    unchecked: 'Sin comprobar',
+    connected: 'Conectada',
+    invalid: 'Credenciales rechazadas',
+    unavailable: 'Proveedor sin confirmar',
+    captcha: 'CAPTCHA requerido',
+  };
+  readonly linkStates: Record<DownloadLinkStatus, string> = {
+    online: 'En línea',
+    offline: 'Fuera de línea',
+    captcha: 'CAPTCHA requerido',
+    'account-required': 'Requiere cuenta',
+    unknown: 'Sin confirmar',
   };
   readonly display = displayLocation;
   readonly loadingError = signal('');
   readonly statusMessage = computed(() => this.loadingError() || this.snapshot()?.engine.message);
   readonly adding = signal(false);
+  readonly checking = signal(false);
+  readonly captured = signal<CapturedLink[]>([]);
+  readonly selectionCount = computed(() => this.captured().filter((item) => item.selected).length);
+  readonly onlineCount = computed(
+    () => this.captured().filter((item) => item.check?.status === 'online').length,
+  );
+  readonly checkedCount = computed(() => this.captured().filter((item) => item.check).length);
+  readonly captureGroups = computed(() => {
+    const groups = new Map<
+      string,
+      { id: string; name?: string; links: CapturedLink[]; expected: number; missing: number }
+    >();
+    for (const link of this.captured()) {
+      const part = link.check?.multipart;
+      const id = part?.key ?? link.id;
+      let group = groups.get(id);
+      if (!group) {
+        group = { id, name: part?.name, links: [], expected: 0, missing: 0 };
+        groups.set(id, group);
+      }
+      group.links.push(link);
+      if (part) group.expected = Math.max(group.expected, part.part);
+    }
+    for (const group of groups.values()) {
+      if (!group.expected) continue;
+      group.links.sort((a, b) => a.check!.multipart!.part - b.check!.multipart!.part);
+      group.missing =
+        group.expected -
+        new Set(
+          group.links
+            .filter((link) => link.check?.status === 'online')
+            .map((link) => link.check!.multipart!.part),
+        ).size;
+    }
+    return [...groups.values()];
+  });
+  readonly downloadGroups = computed(() => this.snapshot()?.groups ?? []);
   readonly busy = signal<ReadonlySet<string>>(new Set());
   readonly pageSize = 30;
   readonly pages = computed(() =>
@@ -104,11 +169,10 @@ export class DownloadsView implements OnInit, OnDestroy {
     publish: 'Reintentar publicación',
   };
   input = '';
-  accountId = '';
   secret = '';
   filter = 'all';
   query = '';
-  private submission?: { key: string; body: Submission };
+  private captureRequest?: AbortController;
   private timer?: ReturnType<typeof setTimeout>;
   private request?: AbortController;
   private destroyed = false;
@@ -122,6 +186,7 @@ export class DownloadsView implements OnInit, OnDestroy {
     this.destroyed = true;
     clearTimeout(this.timer);
     this.request?.abort();
+    this.captureRequest?.abort();
   }
 
   async refresh() {
@@ -144,12 +209,6 @@ export class DownloadsView implements OnInit, OnDestroy {
       );
       if (request.signal.aborted) return;
       this.loadingError.set('');
-      const old = this.snapshot();
-      const previous = new Map(old?.tasks.map((task) => [task.id, task]));
-      next.tasks = next.tasks.map((task) => {
-        const before = previous.get(task.id);
-        return before && JSON.stringify(before) === JSON.stringify(task) ? before : task;
-      });
       this.snapshot.set(next);
       if (this.page() >= this.pages()) this.showPage(this.pages() - 1);
     } catch {
@@ -166,35 +225,109 @@ export class DownloadsView implements OnInit, OnDestroy {
     void this.refresh();
   }
 
-  async add() {
-    if (this.adding()) return;
-    const input = this.input.trim();
-    if (!input) return;
-    const urls = [...new Set(input.split(/\s+/))];
-    if (urls.length > 20) {
-      this.error.set('Añade un máximo de 20 enlaces por lote.');
-      return;
-    }
-    const destination = this.destination();
-    const accountId = this.accountId || undefined;
-    const key = JSON.stringify([input, destination, accountId]);
-    if (this.submission?.key !== key) {
-      this.submission = {
-        key,
-        body: { links: urls.map((url) => ({ id: requestId(), url })), destination, accountId },
-      };
-    }
-    this.adding.set(true);
+  capture() {
+    const urls = new Set(this.input.trim().split(/\s+/).filter(Boolean));
+    for (const item of this.captured()) urls.delete(item.url);
+    const links = [...urls].map((url) => ({ id: requestId(), url, selected: false }));
+    this.input = '';
+    this.captured.update((current) => [...current, ...links]);
+    return this.checkLinks(links);
+  }
+
+  recheck() {
+    return this.checkLinks(this.captured().filter((item) => item.check?.status !== 'online'));
+  }
+
+  private async checkLinks(items: CapturedLink[]) {
+    if (this.checking() || !items.length) return;
+    const request = new AbortController();
+    this.captureRequest = request;
+    this.checking.set(true);
     this.error.set('');
     try {
-      await this.api.request('downloads', this.submission.body);
-      this.submission = undefined;
-      if (this.input.trim() === input) this.input = '';
-      this.showPage(0);
+      for (let offset = 0; offset < items.length && !request.signal.aborted; offset += 6) {
+        const results = new Map(
+          await Promise.all(
+            items.slice(offset, offset + 6).map(async (item) => {
+              const check = await this.api
+                .request<DownloadLinkCheck>('downloads/check', { url: item.url }, request.signal)
+                .catch((error: unknown): DownloadLinkCheck => ({
+                  status: 'unknown',
+                  message:
+                    error instanceof Error ? error.message : 'No se pudo comprobar el enlace.',
+                }));
+              return [item.id, { ...item, check, selected: check.status === 'online' }] as const;
+            }),
+          ),
+        );
+        if (!request.signal.aborted)
+          this.captured.update((current) => current.map((item) => results.get(item.id) ?? item));
+      }
+    } finally {
+      this.checking.set(false);
+    }
+  }
+
+  selectLink(id: string, selected: boolean) {
+    this.captured.update((items) =>
+      items.map((item) =>
+        item.id === id && item.check?.status === 'online' ? { ...item, selected } : item,
+      ),
+    );
+  }
+
+  selectOnline(selected: boolean) {
+    this.captured.update((items) =>
+      items.map((item) => (item.check?.status === 'online' ? { ...item, selected } : item)),
+    );
+  }
+
+  removeCaptured(id: string) {
+    this.captured.update((items) => items.filter((item) => item.id !== id));
+  }
+
+  async add() {
+    if (this.adding() || this.checking()) return;
+    const links: Submission['links'] = [];
+    let incomplete = 0;
+    for (const group of this.captureGroups()) {
+      const selected = group.links.filter(
+        (item) => item.selected && item.check?.status === 'online',
+      );
+      if (!selected.length) continue;
+      const parts = new Set(selected.map((item) => item.check?.multipart?.part));
+      if (group.expected > parts.size) incomplete++;
+      for (const item of selected)
+        links.push({
+          id: item.id,
+          url: item.url,
+          name: item.check?.name,
+          expectedParts: group.expected || undefined,
+        });
+    }
+    if (
+      !links.length ||
+      (incomplete &&
+        !window.confirm(
+          'Hay paquetes incompletos en la selección. ¿Añadir las partes disponibles?',
+        ))
+    )
+      return;
+    this.adding.set(true);
+    this.error.set('');
+    const destination = this.destination();
+    try {
+      for (let offset = 0; offset < links.length && !this.destroyed; offset += 8) {
+        const batch = links.slice(offset, offset + 8);
+        await this.api.request('downloads', { links: batch, destination } satisfies Submission);
+        const submitted = new Set(batch.map((item) => item.id));
+        this.captured.update((items) => items.filter((item) => !submitted.has(item.id)));
+      }
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : 'No se pudieron añadir los enlaces.');
     } finally {
       this.adding.set(false);
+      if (!this.destroyed) this.showPage(0);
     }
   }
 
@@ -237,14 +370,15 @@ export class DownloadsView implements OnInit, OnDestroy {
     if (!account.label.trim() || (!account.id && !this.secret)) return;
     await this.changeSettings(async () => {
       const accounts = await this.api.request<DownloadAccount[]>('downloads/accounts', {
-        ...account,
+        label: account.label,
+        provider: account.provider,
         id: account.id || undefined,
-        email: account.provider === 'mega' ? account.email?.trim() : undefined,
+        email: this.usesEmail(account.provider) ? account.email?.trim() : undefined,
         secret: this.secret || undefined,
       });
       this.settings.update((current) => current && { ...current, accounts });
       this.editAccount(null);
-      this.settingsMessage.set('Cuenta guardada.');
+      if (!account.id) this.settingsMessage.set('Cuenta guardada. Revisa su estado de conexión.');
     });
   }
 
@@ -255,10 +389,29 @@ export class DownloadsView implements OnInit, OnDestroy {
         id: account.id,
       });
       this.settings.update((current) => current && { ...current, accounts });
-      if (this.accountId === account.id) this.accountId = '';
       if (this.accountDraft()?.id === account.id) this.editAccount(null);
       this.settingsMessage.set('Cuenta eliminada.');
     });
+  }
+
+  checkAccount(account: DownloadAccount) {
+    return this.changeSettings(async () => {
+      const accounts = await this.api.request<DownloadAccount[]>('downloads/accounts/check', {
+        id: account.id,
+      });
+      this.settings.update((current) => current && { ...current, accounts });
+    });
+  }
+
+  usesEmail(provider: DownloadAccountProvider) {
+    return ['mega', 'rapidgator', 'nitroflare'].includes(provider);
+  }
+
+  secretLabel(provider: DownloadAccountProvider) {
+    if (provider === 'mega' || provider === 'rapidgator') return 'Contraseña';
+    if (provider === 'nitroflare') return 'Clave prémium';
+    if (provider === 'terabox') return 'Token de acceso de Open Platform';
+    return 'Clave API';
   }
 
   private async changeSettings(update: () => Promise<void>) {
@@ -323,6 +476,30 @@ export class DownloadsView implements OnInit, OnDestroy {
   percent(task: Download) {
     if (task.status === 'completed' || task.status === 'publishing') return 100;
     return task.total ? Math.min(100, Math.floor((task.downloaded * 100) / task.total)) : null;
+  }
+
+  groupProgress(tasks: Download[]) {
+    const total = tasks.reduce((sum, task) => sum + task.total, 0);
+    if (total && tasks.every((task) => task.total || task.status === 'completed')) {
+      const downloaded = tasks.reduce(
+        (sum, task) => sum + Math.min(task.downloaded, task.total),
+        0,
+      );
+      return Math.floor((100 * downloaded) / total);
+    }
+    return null;
+  }
+
+  linkState(status: DownloadLinkStatus | undefined) {
+    return status ? this.linkStates[status] : 'Pendiente de comprobar';
+  }
+
+  downloadState(status: DownloadStatus) {
+    return this.states[status];
+  }
+
+  actionLabel(action: DownloadAction) {
+    return this.labels[action];
   }
 
   eta(task: Download) {

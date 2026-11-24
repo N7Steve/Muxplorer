@@ -48,7 +48,8 @@ import { MegaDownloads } from './mega-downloads';
     DownloadAccounts,
     GopeedDownloadProvider,
     MegaDownloads,
-    { provide: DOWNLOAD_PROVIDER, useClass: DownloadRouting },
+    DownloadRouting,
+    { provide: DOWNLOAD_PROVIDER, useExisting: DownloadRouting },
   ],
 })
 class AppModule {}

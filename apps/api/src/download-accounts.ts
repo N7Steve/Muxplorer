@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { constants, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { DownloadAccount } from '@muxplorer/shared';
+import type { DownloadAccount, DownloadAccountStatus } from '@muxplorer/shared';
 import { Store } from './store';
 
 type AccountRecord = DownloadAccount & { secret: string };
@@ -17,11 +17,12 @@ export class DownloadAccounts {
   }
 
   list(): DownloadAccount[] {
-    return this.records().map(({ id, provider, label, email }) => ({
+    return this.records().map(({ id, provider, label, email, status, checkedAt }) => ({
       id,
       provider,
       label,
       email,
+      ...(status && { status, checkedAt }),
     }));
   }
 
@@ -41,6 +42,7 @@ export class DownloadAccounts {
       label: input.label,
       email: input.email,
       secret: input.secret ? this.seal(input.secret, id) : previous!.secret,
+      ...(!input.secret && { status: previous?.status, checkedAt: previous?.checkedAt }),
     };
     if (previous) accounts[accounts.indexOf(previous)] = record;
     else accounts.push(record);
@@ -60,6 +62,27 @@ export class DownloadAccounts {
     const account = this.records().find((item) => item.id === id);
     if (!account) throw new NotFoundException('Cuenta de descarga no encontrada.');
     return { ...account, secret: this.unseal(account.secret, id) };
+  }
+
+  async check(id: string, verify: (account: AccountRecord) => Promise<DownloadAccountStatus>) {
+    const before = this.records().find((item) => item.id === id);
+    if (!before) throw new NotFoundException('Cuenta de descarga no encontrada.');
+    const checkedAt = new Date().toISOString();
+    const status = await Promise.resolve()
+      .then(() => verify(this.get(id)))
+      .catch(() => 'unavailable' as const);
+    const accounts = this.records();
+    const current = accounts.find((item) => item.id === id);
+    if (
+      current &&
+      current.secret === before.secret &&
+      current.email === before.email &&
+      (!current.checkedAt || current.checkedAt <= checkedAt)
+    ) {
+      Object.assign(current, { status, checkedAt });
+      this.store.set('downloadAccounts', JSON.stringify(accounts));
+    }
+    return this.list();
   }
 
   private key(create: boolean) {

@@ -4,6 +4,7 @@ import { lstat, mkdir, open, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { API, File, Storage } from 'megajs';
+import type { DownloadAccount, DownloadAccountStatus } from '@muxplorer/shared';
 import { DownloadAccounts } from './download-accounts';
 import { DownloadPublication } from './download-publication';
 import { type DownloadResource, type EngineTask, ProviderError } from './download-provider';
@@ -208,7 +209,32 @@ export class MegaDownloads implements OnModuleDestroy {
   }
 
   resolve(url: string, accountId?: string) {
-    return this.withResource(url, accountId, new AbortController(), async (resource) => resource);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    return this.withResource(url, accountId, controller, async (resource) => resource).finally(() =>
+      clearTimeout(timeout),
+    );
+  }
+
+  async verify(account: DownloadAccount & { secret: string }): Promise<DownloadAccountStatus> {
+    const storage = new Storage({
+      email: account.email!,
+      password: account.secret,
+      keepalive: false,
+      autoload: false,
+      fetch: megaFetch(AbortSignal.timeout(7000)),
+    });
+    try {
+      await storage.ready;
+      return 'connected';
+    } catch (error) {
+      return error instanceof Error &&
+        /ENOENT|EACCESS|invalid credentials|EMFAREQUIRED/i.test(error.message)
+        ? 'invalid'
+        : 'unavailable';
+    } finally {
+      storage.api.close();
+    }
   }
 
   private async transfer(initial: MegaTask, signal: AbortSignal) {

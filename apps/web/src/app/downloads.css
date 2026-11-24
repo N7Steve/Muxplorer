@@ -18,18 +18,20 @@ h1 {
   margin: 0 0 0.8rem;
 }
 .engine-state,
+.account-state,
 .download-info span,
 .download-metrics,
 .downloads-message {
   color: var(--muted);
   font-size: 0.875rem;
 }
-.engine-state {
+.engine-state,
+.account-state {
   display: inline-flex;
   gap: 0.5rem;
   align-items: center;
 }
-.engine-state.online {
+.online {
   color: var(--green);
 }
 .download-toolbar,
@@ -40,7 +42,8 @@ h1 {
   gap: 0.5rem 0.75rem;
 }
 .download-settings,
-.download-picker {
+.download-picker,
+.capture-panel {
   margin: 0 0 1rem;
   padding: 1rem;
   background: var(--surface);
@@ -48,7 +51,8 @@ h1 {
   border-radius: 0.75rem;
   min-width: 0;
 }
-.download-settings h2 {
+.download-settings h2,
+.capture-panel h2 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
 }
@@ -149,6 +153,48 @@ h1 {
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 0.75rem;
+}
+.capture-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+.capture-panel h2,
+.capture-panel p {
+  margin: 0;
+}
+.capture-row,
+.package-item {
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--surface);
+}
+.capture-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+.capture-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.package-item summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.package-item summary span {
+  margin-inline-start: 0.65rem;
+  font-size: 0.875rem;
+}
+.package-parts {
+  margin-top: 0.65rem;
 }
 .download-info strong {
   overflow-wrap: anywhere;

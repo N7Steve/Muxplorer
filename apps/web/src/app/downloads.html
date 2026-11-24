@@ -37,10 +37,7 @@
   <div class="setting-row">
     <div>
       <strong>Cuentas</strong>
-      <div class="download-path">
-        Elige una cuenta al añadir enlaces. Los enlaces públicos de MEGA también admiten descarga
-        sin cuenta.
-      </div>
+      <div class="download-path">El gestor elige una cuenta compatible para cada enlace.</div>
     </div>
     <button
       class="button compact secondary"
@@ -59,8 +56,24 @@
         <div class="download-path">
           {{ providers[account.provider] }} @if (account.email) { · {{ account.email }} }
         </div>
+        <div class="account-state" [class.online]="account.status === 'connected'" role="status">
+          <span class="status-dot" [class.warning]="account.status !== 'connected'"></span>
+          {{ accountStates[account.status ?? 'unchecked'] }} @if (account.checkedAt) {
+          <time [attr.datetime]="account.checkedAt"
+            >{{ account.checkedAt | date: 'dd/MM HH:mm' }}</time
+          >
+          }
+        </div>
       </div>
       <div class="download-toolbar">
+        <button
+          class="button compact ghost"
+          [disabled]="saving()"
+          (click)="checkAccount(account)"
+          [attr.aria-label]="'Comprobar cuenta ' + account.label"
+        >
+          Comprobar
+        </button>
         <button
           class="button compact ghost"
           [disabled]="saving()"
@@ -86,18 +99,18 @@
     <label
       >Proveedor
       <select name="provider" [(ngModel)]="draft.provider" [disabled]="!!draft.id || saving()">
-        <option value="1fichier">1fichier</option>
-        <option value="mega">MEGA</option>
-        <option value="real-debrid">Real-Debrid</option>
+        @for (option of providerOptions; track option[0]) {
+        <option [value]="option[0]">{{ option[1] }}</option>
+        }
       </select>
     </label>
     <label
       >Nombre de la cuenta
       <input name="label" [(ngModel)]="draft.label" required maxlength="80" [disabled]="saving()" />
     </label>
-    @if (draft.provider === 'mega') {
+    @if (usesEmail(draft.provider)) {
     <label
-      >Correo de MEGA
+      >Correo de {{ providers[draft.provider] }}
       <input
         name="email"
         type="email"
@@ -110,7 +123,7 @@
     </label>
     }
     <label
-      >{{ draft.provider === 'mega' ? 'Contraseña de MEGA' : 'Clave API' }}
+      >{{ secretLabel(draft.provider) }}
       <input
         name="secret"
         type="password"
@@ -128,7 +141,7 @@
         type="submit"
         [disabled]="saving() || !draft.label.trim() || (!draft.id && !secret)"
       >
-        Guardar cuenta
+        {{ saving() ? 'Comprobando…' : 'Guardar cuenta' }}
       </button>
       <button
         class="button compact ghost"
@@ -181,28 +194,17 @@
 </section>
 }
 
-<form class="download-form" (ngSubmit)="add()">
+<form class="download-form" (ngSubmit)="capture()">
   <label for="download-links">Enlaces de descarga</label>
   <textarea
     id="download-links"
     name="links"
     rows="3"
-    placeholder="Hasta 20 enlaces directos, de alojamiento o magnet, uno por línea"
+    placeholder="Pega enlaces directos, de alojamiento o magnet"
     [(ngModel)]="input"
-    [disabled]="!available() || adding()"
+    [disabled]="adding() || checking()"
   ></textarea>
   <div class="download-toolbar batch-options">
-    <label
-      >Cuenta para este lote
-      <select name="account" [(ngModel)]="accountId" [disabled]="adding()">
-        <option value="">Sin cuenta</option>
-        @for (account of settings()?.accounts ?? []; track account.id) {
-        <option [value]="account.id">
-          {{ account.label }} · {{ providers[account.provider] }}
-        </option>
-        }
-      </select>
-    </label>
     @if (destination(); as target) {
     <div class="batch-destination">
       <span class="download-path">{{ display(target) }}</span>
@@ -232,10 +234,14 @@
   <button
     class="button primary"
     type="submit"
-    [disabled]="!available() || adding() || !input.trim()"
+    [disabled]="!available() || adding() || checking() || !input.trim()"
   >
-    <mx-icon [name]="adding() ? 'LoaderCircle' : 'Plus'" [class.spinning]="adding()" [size]="17" />
-    Añadir descargas
+    <mx-icon
+      [name]="checking() ? 'LoaderCircle' : 'Plus'"
+      [class.spinning]="checking()"
+      [size]="17"
+    />
+    Comprobar enlaces
   </button>
 </form>
 
@@ -256,7 +262,116 @@
     </button>
   </div>
 </section>
-} @if (error()) {
+} @if (captured().length) {
+<section class="capture-panel" aria-labelledby="captured-heading">
+  <div class="setting-row">
+    <div>
+      <h2 id="captured-heading">Enlaces capturados</h2>
+      <p class="download-path" role="status">
+        {{ checkedCount() }} de {{ captured().length }} comprobados · {{ onlineCount() }} en línea
+      </p>
+    </div>
+    <div class="download-toolbar">
+      <button
+        type="button"
+        class="button compact secondary"
+        [disabled]="checking() || adding() || !available() || onlineCount() === captured().length"
+        (click)="recheck()"
+      >
+        Volver a comprobar pendientes
+      </button>
+      <button
+        type="button"
+        class="button compact ghost"
+        [disabled]="checking() || adding()"
+        (click)="captured.set([])"
+      >
+        Limpiar lista
+      </button>
+    </div>
+  </div>
+  <ul class="download-list" aria-label="Resultados de la comprobación">
+    @for (group of captureGroups(); track group.id) {
+    <li>
+      @if (group.expected) {
+      <details class="package-item">
+        <summary>
+          <strong>{{ group.name }}</strong>
+          <span>{{ group.expected - group.missing }} de {{ group.expected }} partes en línea</span>
+          @if (group.missing) { <span class="failure">Paquete incompleto</span> }
+        </summary>
+        <ul class="download-list package-parts">
+          @for (item of group.links; track item.id) {
+          <li><ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: item }" /></li>
+          }
+        </ul>
+      </details>
+      } @else {
+      <ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: group.links[0] }" />
+      }
+    </li>
+    }
+  </ul>
+  <div class="download-toolbar">
+    <button
+      type="button"
+      class="button compact ghost"
+      [disabled]="adding() || checking() || !onlineCount()"
+      (click)="selectOnline(selectionCount() !== onlineCount())"
+    >
+      {{ selectionCount() === onlineCount() && onlineCount() ? 'Quitar selección' : 'Seleccionar
+      todos en línea' }}
+    </button>
+    <button
+      type="button"
+      class="button primary"
+      [disabled]="adding() || checking() || !available() || !selectionCount()"
+      (click)="add()"
+    >
+      <mx-icon
+        [name]="adding() ? 'LoaderCircle' : 'Plus'"
+        [class.spinning]="adding()"
+        [size]="17"
+      />
+      {{ adding() ? 'Añadiendo…' : 'Añadir seleccionados a descargas' }} @if (selectionCount()) {
+      ({{ selectionCount() }}) }
+    </button>
+  </div>
+</section>
+}
+<ng-template #capturedRow let-item>
+  <div class="capture-row">
+    <label>
+      <input
+        type="checkbox"
+        [checked]="item.selected"
+        [disabled]="item.check?.status !== 'online' || adding() || checking()"
+        (change)="selectLink(item.id, $any($event.target).checked)"
+      />
+      <span [title]="item.url">{{ item.check?.name || item.url }}</span>
+    </label>
+    <span [class.online]="item.check?.status === 'online'">
+      {{ linkState(item.check?.status) }}
+    </span>
+    @if (item.check?.total) { <span>{{ bytes(item.check.total) }}</span> } @if (item.check?.message)
+    { <span class="download-path">{{ item.check.message }}</span> } @if (item.check?.status ===
+    'captcha' || item.check?.status === 'account-required') {
+    <a class="button compact ghost" [href]="item.url" target="_blank" rel="noopener noreferrer"
+      >Abrir enlace</a
+    >
+    }
+    <button
+      type="button"
+      class="button compact ghost"
+      [disabled]="adding() || checking()"
+      (click)="removeCaptured(item.id)"
+    >
+      Quitar
+    </button>
+  </div>
+</ng-template>
+
+@if (error()) {
 <p class="downloads-message failure" role="alert">{{ error() }}</p>
 } @if (snapshot(); as current) {
 <div class="download-toolbar download-filters">
@@ -286,13 +401,67 @@
   >
   }
 </div>
-@if (current.tasks.length) {
+@if (downloadGroups().length) {
 <ul class="download-list" aria-label="Descargas">
-  @for (task of current.tasks; track task.id) { @let progress = percent(task);
-  <li class="download-item">
+  @for (group of downloadGroups(); track group.id) {
+  <li>
+    @if (group.expected) {
+    <details class="package-item">
+      <summary>
+        <strong>{{ group.name }}</strong>
+        <span>{{ group.tasks.length }} partes en la cola</span>
+        @if (groupProgress(group.tasks); as progress) { <span>{{ progress }} %</span> } @if
+        (group.missing) {
+        <span class="failure">Paquete incompleto · {{ group.missing }} pendientes</span> }
+      </summary>
+      <ul class="download-list package-parts">
+        @for (task of group.tasks; track task.id) {
+        <li><ng-container *ngTemplateOutlet="taskRow; context: { $implicit: task }" /></li>
+        }
+      </ul>
+    </details>
+    } @else {
+    <ng-container *ngTemplateOutlet="taskRow; context: { $implicit: group.tasks[0] }" />
+    }
+  </li>
+  }
+</ul>
+@if (pages() > 1) {
+<nav class="download-pagination" aria-label="Páginas de descargas">
+  <button class="button compact secondary" [disabled]="page() === 0" (click)="showPage(page() - 1)">
+    Anterior
+  </button>
+  <span>{{ page() + 1 }} / {{ pages() }}</span>
+  <button
+    class="button compact secondary"
+    [disabled]="page() + 1 >= pages()"
+    (click)="showPage(page() + 1)"
+  >
+    Siguiente
+  </button>
+</nav>
+} } @else {
+<div class="state-box">
+  <mx-icon name="Download" [size]="30" />
+  @if (filter !== 'all' || query.trim()) {
+  <strong>Ninguna descarga coincide con el filtro</strong>
+  } @else {
+  <strong>Sin descargas</strong>
+  }
+</div>
+} } @else if (!loadingError()) {
+<div class="state-box" role="status">
+  <mx-icon name="LoaderCircle" class="spinning" [size]="24" />
+  <span>Cargando descargas…</span>
+</div>
+}
+
+<ng-template #taskRow let-task>
+  @let progress = percent(task);
+  <div class="download-item">
     <div class="download-info">
       <strong [title]="task.name">{{ task.name }}</strong>
-      <span>{{ states[task.status] }}</span>
+      <span>{{ downloadState(task.status) }}</span>
     </div>
     <progress
       [attr.value]="progress"
@@ -331,40 +500,10 @@
         [disabled]="busy().has(task.id)"
         (click)="command(task, action)"
       >
-        {{ labels[action] }}
+        {{ actionLabel(action) }}
       </button>
       }
     </div>
     }
-  </li>
-  }
-</ul>
-@if (pages() > 1) {
-<nav class="download-pagination" aria-label="Páginas de descargas">
-  <button class="button compact secondary" [disabled]="page() === 0" (click)="showPage(page() - 1)">
-    Anterior
-  </button>
-  <span>{{ page() + 1 }} / {{ pages() }}</span>
-  <button
-    class="button compact secondary"
-    [disabled]="page() + 1 >= pages()"
-    (click)="showPage(page() + 1)"
-  >
-    Siguiente
-  </button>
-</nav>
-} } @else {
-<div class="state-box">
-  <mx-icon name="Download" [size]="30" />
-  @if (filter !== 'all' || query.trim()) {
-  <strong>Ninguna descarga coincide con el filtro</strong>
-  } @else {
-  <strong>Sin descargas</strong>
-  @if (available()) { <span>Añade un enlace para empezar.</span> } }
-</div>
-} } @else if (!loadingError()) {
-<div class="state-box" role="status">
-  <mx-icon name="LoaderCircle" class="spinning" [size]="24" />
-  <span>Cargando descargas…</span>
-</div>
-}
+  </div>
+</ng-template>

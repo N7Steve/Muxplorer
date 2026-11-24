@@ -43,13 +43,18 @@ docker compose --profile downloads up --build -d
 
 Para detener ambos servicios, usa `docker compose --profile downloads down`.
 
-Abre **Descargas** y pega hasta 20 enlaces por lote. En **Ajustes** puedes guardar una carpeta predeterminada de Downloads o PlexMedia. Puedes elegir otra carpeta para el lote. Las tareas guardan su destino al crearse. Usa la búsqueda y el filtro de estado para encontrar tareas y **Abrir en el explorador** para seleccionar el resultado publicado.
+Abre **Descargas**, pega los enlaces y pulsa **Comprobar enlaces**. El capturador distingue los enlaces en línea, los eliminados y los que requieren CAPTCHA, una cuenta o una nueva comprobación. Selecciona los enlaces en línea que quieras enviar a la cola. Los volúmenes numerados, como `.part01.rar` y `.7z.001`, se muestran en un paquete desplegable y el gestor avisa si faltan partes en la secuencia conocida. En **Ajustes** puedes guardar una carpeta predeterminada de Downloads o PlexMedia y puedes elegir otra para el lote. Usa **Abrir en el explorador** para seleccionar el resultado publicado.
 
-En **Ajustes → Cuentas**, guarda una o varias cuentas y selecciona la que quieras usar para el lote.
+En **Ajustes → Cuentas**, añade las cuentas de tus alojamientos. Muxplorer verifica las credenciales al guardar, muestra el resultado y la hora, y permite comprobarlas de nuevo. El gestor elige por enlace una cuenta del alojamiento, prueba Real-Debrid cuando el dominio es compatible y usa el acceso público cuando está disponible.
 
 - **1fichier** usa una clave API de una cuenta con acceso a la API de descargas.
 - **MEGA** admite enlaces compartidos de archivos y carpetas con su clave de descifrado. Puedes descargar como invitado o usar una cuenta con correo y contraseña. El inicio de sesión con verificación en dos pasos queda fuera de esta versión. Al reanudar una transferencia de MEGA se vuelve a descargar desde el principio para verificar la integridad del contenido.
-- **Real-Debrid** usa un token API y genera un enlace directo de los alojamientos admitidos por tu cuenta. Si un enlace temporal de 1fichier o Real-Debrid caduca, vuelve a añadir el enlace original para generar otro.
+- **Real-Debrid** usa un token API y genera un enlace directo de los alojamientos admitidos por tu cuenta.
+- **Rapidgator** usa correo y contraseña. **Nitroflare** usa correo y una clave prémium.
+- **KatFile** usa una clave API. Su API de enlaces directos admite los archivos propios de la cuenta.
+- **TeraBox** usa un token de acceso de Open Platform y admite enlaces públicos a archivos individuales.
+
+Si caduca un enlace temporal, puedes volver a añadir el original para generar otro. Si aparece un CAPTCHA, abre el enlace en el proveedor para continuar allí.
 
 Gopeed conserva las tareas HTTP y BitTorrent en `gopeed_storage`. Todas las transferencias se preparan en `gopeed_staging`. Muxplorer verifica el resultado y lo publica en la carpeta seleccionada mediante un renombrado atómico con sufijo si hay colisión. La operación necesita espacio para una copia en el destino. En BitTorrent, la publicación termina el seeding. **Eliminar** retira el registro y conserva el contenido publicado.
 
@@ -90,7 +95,7 @@ La compilación y publicación se realizan localmente desde el PC de desarrollo 
 publica imágenes en GHCR. Para fijar una versión exacta o volver atrás, sustituye `latest`
 por una etiqueta `sha-...` o versión publicada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.3.0 .`, exporta con `docker save -o muxplorer-0.3.0.tar muxplorer:0.3.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.3.0` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.4.0 .`, exporta con `docker save -o muxplorer-0.4.0.tar muxplorer:0.4.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.4.0` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -202,7 +207,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.3.0 .
+docker build -t muxplorer:0.4.0 .
 pnpm test:docker
 pnpm test:downloads
 pnpm exec playwright install chromium

@@ -1,3 +1,5 @@
+import type { DownloadLinkCheck, DownloadLinkStatus } from '@muxplorer/shared';
+
 export interface DownloadResource {
   name: string;
   size: number;
@@ -24,6 +26,7 @@ export interface DownloadProvider {
   validate?(url: string, accountId?: string): void;
   add(url: string, id: string, accountId?: string): Promise<string>;
   resolve?(url: string, accountId?: string): Promise<DownloadResource>;
+  check?(url: string): Promise<DownloadLinkCheck>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
@@ -31,7 +34,14 @@ export interface DownloadProvider {
 }
 export const DOWNLOAD_PROVIDER = Symbol('DownloadProvider');
 
-export class HostDownloadError extends Error {}
+export class HostDownloadError extends Error {
+  constructor(
+    message: string,
+    readonly status: Exclude<DownloadLinkStatus, 'online'> = 'unknown',
+  ) {
+    super(message);
+  }
+}
 
 export class ProviderError extends Error {
   constructor(readonly kind: 'auth' | 'connection' | 'response' | 'rejected' | 'missing') {

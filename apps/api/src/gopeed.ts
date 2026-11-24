@@ -1,7 +1,12 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { z } from 'zod';
 import { config } from './config';
-import { ProviderError, type DownloadProvider, type EngineTask } from './download-provider';
+import {
+  HostDownloadError,
+  ProviderError,
+  type DownloadProvider,
+  type EngineTask,
+} from './download-provider';
 
 const bytes = z.number().int().nonnegative();
 const engineId = z.string().regex(/^[\w-]{1,128}$/);
@@ -24,7 +29,11 @@ const task = z.object({
   }),
   progress: z.object({ speed: z.number().finite(), downloaded: bytes }).nullish(),
 });
-const envelope = z.object({ code: z.number().int(), data: z.unknown() });
+const envelope = z.object({
+  code: z.number().int(),
+  msg: z.string().optional(),
+  data: z.unknown(),
+});
 const ENGINE_STAGING = '/app/Downloads';
 export const engineDirectory = (id: string) => ENGINE_STAGING + '/' + id;
 
@@ -84,6 +93,11 @@ export class GopeedDownloadProvider implements DownloadProvider {
     const result = envelope.safeParse(await response.json().catch(() => null));
     if (!result.success) throw new ProviderError('response');
     if (result.data.code === 2001) throw new ProviderError('missing');
+    if (endpoint === 'resolve' && /^http request fail, code:(404|410)$/.test(result.data.msg ?? ''))
+      throw new HostDownloadError(
+        'El servidor indica que el archivo ya no está disponible.',
+        'offline',
+      );
     if (result.data.code !== 0) throw new ProviderError('rejected');
     const data = schema.safeParse(result.data.data);
     if (!data.success) throw new ProviderError('response');

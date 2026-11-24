@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { AuthGuard } from './auth';
 import { location, parse } from './contracts';
 import { DownloadAccounts } from './download-accounts';
+import { DownloadRouting } from './download-routing';
 import { Downloads } from './downloads';
+import { safeName } from './paths';
 
 const id = z.uuid().transform((value) => value.toLowerCase());
 const url = z
@@ -30,7 +32,16 @@ const url = z
   }, 'Introduce un enlace HTTP, HTTPS o magnet de BitTorrent válido.');
 const batch = z
   .object({
-    links: z.array(z.object({ id, url }).strict()).min(1).max(20),
+    links: z
+      .array(
+        z.strictObject({
+          id,
+          url,
+          name: z.string().min(1).max(240).optional(),
+          expectedParts: z.number().int().min(1).max(99999).optional(),
+        }),
+      )
+      .min(1),
     destination: location.optional(),
     accountId: id.optional(),
   })
@@ -62,6 +73,20 @@ const token = z
 const account = z.discriminatedUnion('provider', [
   z.strictObject({ ...accountFields, provider: z.literal('1fichier'), secret: token }),
   z.strictObject({ ...accountFields, provider: z.literal('real-debrid'), secret: token }),
+  z.strictObject({ ...accountFields, provider: z.literal('terabox'), secret: token }),
+  z.strictObject({ ...accountFields, provider: z.literal('katfile'), secret: token }),
+  z.strictObject({
+    ...accountFields,
+    provider: z.literal('nitroflare'),
+    email: z.email().max(254),
+    secret: token,
+  }),
+  z.strictObject({
+    ...accountFields,
+    provider: z.literal('rapidgator'),
+    email: z.email().max(254),
+    secret: z.string().min(1).max(1024).optional(),
+  }),
   z.strictObject({
     ...accountFields,
     provider: z.literal('mega'),
@@ -76,6 +101,7 @@ export class DownloadsController {
   constructor(
     private readonly downloads: Downloads,
     private readonly accounts: DownloadAccounts,
+    private readonly routing: DownloadRouting,
   ) {}
 
   @Get() list(@Query() query: unknown) {
@@ -89,12 +115,18 @@ export class DownloadsController {
 
   @Post() add(@Body() body: unknown) {
     const { links, destination, accountId } = parse(batch, body);
+    for (const link of links) if (link.name) safeName(link.name);
     return this.downloads.add(links, destination, accountId);
   }
 
   @Post('resolve') analyze(@Body() body: unknown) {
     const source = parse(z.strictObject({ url, accountId: id.optional() }), body);
     return this.downloads.analyze(source.url, source.accountId);
+  }
+
+  @Post('check') check(@Body() body: unknown) {
+    const source = parse(z.strictObject({ url }), body);
+    return this.downloads.check(source.url);
   }
 
   @Get('settings') settings() {
@@ -108,11 +140,15 @@ export class DownloadsController {
   }
 
   @Post('accounts') saveAccount(@Body() body: unknown) {
-    return this.accounts.save(parse(account, body));
+    return this.routing.saveAccount(parse(account, body));
+  }
+
+  @Post('accounts/check') checkAccount(@Body() body: unknown) {
+    return this.routing.checkAccount(parse(z.strictObject({ id }), body).id);
   }
 
   @Post('accounts/remove') removeAccount(@Body() body: unknown) {
-    return this.accounts.remove(parse(z.strictObject({ id }), body).id);
+    return this.routing.removeAccount(parse(z.strictObject({ id }), body).id);
   }
 
   @Get(':id') detail(@Param('id') value: string) {
