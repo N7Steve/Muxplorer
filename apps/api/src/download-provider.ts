@@ -14,20 +14,24 @@ export interface EngineTask {
   resource?: DownloadResource;
   downloaded: number;
   speed: number;
+  error?: string;
 }
 
 export interface DownloadProvider {
   info(): Promise<{ version: string }>;
   list(): Promise<EngineTask[]>;
   get(id: string): Promise<EngineTask | null>;
-  add(url: string, id: string): Promise<string>;
-  resolve?(url: string): Promise<DownloadResource>;
+  validate?(url: string, accountId?: string): void;
+  add(url: string, id: string, accountId?: string): Promise<string>;
+  resolve?(url: string, accountId?: string): Promise<DownloadResource>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
   remove(id: string): Promise<void>;
 }
 export const DOWNLOAD_PROVIDER = Symbol('DownloadProvider');
+
+export class HostDownloadError extends Error {}
 
 export class ProviderError extends Error {
   constructor(readonly kind: 'auth' | 'connection' | 'response' | 'rejected' | 'missing') {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -9,17 +10,30 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import type { Download, DownloadAction, DownloadEngine, DownloadsPage } from '@muxplorer/shared';
+import type {
+  Download,
+  DownloadAction,
+  DownloadEngine,
+  DownloadsPage,
+  DownloadStatus,
+  Location,
+} from '@muxplorer/shared';
 import { config } from './config';
 import { diagnostic } from './diagnostics';
-import { DownloadPublication, PublicationError, type Publication } from './download-publication';
+import {
+  defaultDownloadDestination,
+  DownloadPublication,
+  PublicationError,
+  type Publication,
+} from './download-publication';
 import {
   DOWNLOAD_PROVIDER,
+  HostDownloadError,
   ProviderError,
   type DownloadProvider,
   type EngineTask,
 } from './download-provider';
-import { safeName } from './paths';
+import { childLocation, safeName } from './paths';
 import { Store } from './store';
 
 interface RecordData {
@@ -34,10 +48,19 @@ interface RecordData {
   publicationError?: string;
   name?: string;
   total?: number;
+  destination?: Location;
+  downloadError?: string;
 }
 
 const creationGrace = 30_000;
-const digest = (url: string) => createHash('sha256').update(url).digest('hex');
+const digest = (url: string, accountId?: string) =>
+  createHash('sha256')
+    .update(accountId ? JSON.stringify([url, accountId]) : url)
+    .digest('hex');
+const sameLocation = (a: Location, b: Location) => a.root === b.root && a.path === b.path;
+const activeStates: DownloadStatus[] = ['pending', 'running', 'publishing'];
+const issueStates: DownloadStatus[] = ['failed', 'missing', 'publication-failed'];
+export type DownloadFilter = 'all' | 'active' | 'paused' | 'issues' | 'completed' | 'cancelled';
 
 function resolvedName(task?: EngineTask) {
   const resource = task?.resource;
@@ -237,8 +260,8 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       if (!publication) {
         const fresh = record.engineId && (await this.provider.get(record.engineId));
         if (!fresh || !this.owns(fresh, record) || fresh.status !== 'done')
-          throw new PublicationError('Gopeed no confirma que la descarga esté completa.');
-        publication = await this.files.prepare(record.id, fresh);
+          throw new PublicationError('El motor no confirma que la descarga esté completa.');
+        publication = await this.files.prepare(record.id, fresh, record.destination);
         record = { ...record, publication, total: fresh.resource?.size ?? 0 };
         this.save(record);
       }
@@ -257,6 +280,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
             publication: { ...publication, target: name },
           });
         },
+        record.destination,
       );
     } catch (error) {
       if (
@@ -273,9 +297,10 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
           : error instanceof ProviderError
             ? error.message
             : code === 'ENOSPC'
-              ? 'No hay espacio suficiente para publicar en Downloads.'
-              : 'No se pudo verificar o publicar el contenido de Gopeed en Downloads.';
-      if (!record.publication) await this.files.cleanPrepared(record.id).catch(() => undefined);
+              ? 'No hay espacio suficiente en la carpeta de destino.'
+              : 'No se pudo publicar el contenido. Comprueba que la carpeta de destino sigue disponible.';
+      if (!record.publication)
+        await this.files.cleanPrepared(record.id, record.destination).catch(() => undefined);
       this.save({ ...record, publicationError: message });
       diagnostic('downloads.publication_failed', { id: record.id });
     }
@@ -296,7 +321,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       this.tasks.delete(record.id);
     }
     await this.files.cleanStage(record.id);
-    await this.files.cleanPrepared(record.id);
+    await this.files.cleanPrepared(record.id, record.destination);
     if (record.intent === 'remove') this.forget(record.id);
     else
       this.save({
@@ -309,6 +334,25 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
 
   status() {
     return this.engine;
+  }
+
+  destination(): Location {
+    const saved = this.store.get('downloadDestination');
+    return saved ? (JSON.parse(saved) as Location) : defaultDownloadDestination;
+  }
+
+  async setDestination(destination: Location) {
+    await this.checkDestination(destination);
+    this.store.set('downloadDestination', JSON.stringify(destination));
+    return destination;
+  }
+
+  private async checkDestination(destination: Location) {
+    try {
+      await this.files.checkDestination(destination);
+    } catch {
+      throw new BadRequestException('Elige una carpeta existente con permisos de escritura.');
+    }
   }
 
   private requireEngine() {
@@ -335,12 +379,16 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       total: res?.size ?? record.total ?? 0,
       speed: task?.status === 'running' && this.engine.status === 'connected' ? task.speed : 0,
       actions: [],
+      destination: record.destination,
     };
     if (record.phase === 'completed' && record.publication) {
       result.status = 'completed';
       result.name = record.publication.target;
       result.downloaded = result.total;
-      result.result = { root: 'downloads', path: record.publication.target };
+      result.result = childLocation(
+        record.destination ?? defaultDownloadDestination,
+        record.publication.target,
+      );
     } else if (record.phase === 'cancelled' || record.intent === 'cancel') {
       result.status = 'cancelled';
       if (record.intent)
@@ -351,9 +399,11 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     } else if (record.phase === 'rejected' || task?.status === 'failed') {
       result.status = 'failed';
       result.error =
-        record.phase === 'rejected'
+        record.downloadError ??
+        task?.error ??
+        (record.phase === 'rejected'
           ? 'Gopeed rechazó el enlace.'
-          : 'Gopeed informó de un error de descarga. Comprueba el enlace o vuelve a intentarlo.';
+          : 'Gopeed informó de un error de descarga. Comprueba el enlace o vuelve a intentarlo.');
     } else if (record.publication || record.id === this.publishingId) {
       result.status = 'publishing';
     } else if (!task && this.engine.status === 'connected') {
@@ -388,14 +438,29 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  list(page: number, limit: number): DownloadsPage {
-    const records = [...this.records.values()]
+  list(page: number, limit: number, filter: DownloadFilter = 'all', query = ''): DownloadsPage {
+    const tasks = [...this.records.values()]
       .filter((record) => record.intent !== 'remove')
-      .reverse();
+      .reverse()
+      .map((record) => this.view(record));
+    const active = tasks.filter((task) => activeStates.includes(task.status));
+    const search = query.toLocaleLowerCase('es');
+    const matches = tasks.filter(
+      (task) =>
+        task.name.toLocaleLowerCase('es').includes(search) &&
+        (filter === 'all' ||
+          (filter === 'active'
+            ? activeStates.includes(task.status)
+            : filter === 'issues'
+              ? issueStates.includes(task.status)
+              : task.status === filter)),
+    );
     return {
       engine: this.engine,
-      tasks: records.slice(page * limit, (page + 1) * limit).map((record) => this.view(record)),
-      total: records.length,
+      tasks: matches.slice(page * limit, (page + 1) * limit),
+      total: matches.length,
+      active: active.length,
+      speed: active.reduce((sum, task) => sum + task.speed, 0),
     };
   }
 
@@ -409,45 +474,63 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     const location =
       record.phase === 'completed' &&
       publication &&
-      (await this.files.result(publication.target, publication.identity));
+      (await this.files.result(publication.target, publication.identity, record.destination));
     if (!location) throw new NotFoundException('El resultado ya no está en su ubicación original.');
     return location;
   }
 
-  async analyze(url: string) {
+  async analyze(url: string, accountId?: string) {
     this.requireEngine();
     if (!this.provider.resolve)
       throw new ConflictException('El motor no admite el análisis de enlaces.');
     try {
-      const resource = await this.provider.resolve(url);
+      const resource = await this.provider.resolve(url, accountId);
       return {
         name: safeName(resource.name || resource.files[0]?.name),
         total: resource.size,
         files: resource.files.length,
       };
-    } catch {
-      throw new ConflictException('No se pudo analizar el recurso solicitado.');
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new ConflictException(
+        error instanceof HostDownloadError
+          ? error.message
+          : 'No se pudo analizar el recurso solicitado.',
+      );
     }
   }
 
-  add(links: { id: string; url: string }[]) {
+  add(links: { id: string; url: string }[], override?: Location, accountId?: string) {
     return this.serial(async () => {
       this.requireEngine();
+      const destination = override ?? this.destination();
+      for (const { id, url } of links) {
+        const direct = this.records.get(id);
+        if (!direct) this.provider.validate?.(url, accountId);
+        else if (
+          direct.digest !== digest(url, accountId) ||
+          (override && !sameLocation(direct.destination ?? defaultDownloadDestination, override))
+        )
+          throw new ConflictException('El identificador ya se usó con otra descarga.');
+      }
+      if (
+        links.some(({ id }) => !this.records.has(id)) &&
+        !sameLocation(destination, defaultDownloadDestination)
+      )
+        await this.checkDestination(destination);
       const ids: string[] = [];
       for (const { id, url } of links) {
-        const key = digest(url);
+        const key = digest(url, accountId);
         const direct = this.records.get(id);
-        if (direct && direct.digest !== key)
-          throw new ConflictException('El identificador ya se usó con otro enlace.');
         const existing =
           direct ??
           [...this.records.values()].find(
             (record) =>
               record.digest === key &&
+              sameLocation(record.destination ?? defaultDownloadDestination, destination) &&
               !record.intent &&
               (record.phase === 'creating' ||
-                (record.phase === 'active' &&
-                  !['failed', 'missing', 'publication-failed'].includes(this.view(record).status))),
+                (record.phase === 'active' && !issueStates.includes(this.view(record).status))),
           );
         if (existing) {
           ids.push(existing.id);
@@ -458,6 +541,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
           digest: key,
           phase: 'creating',
           createdAt: new Date().toISOString(),
+          destination,
         };
         try {
           await this.files.createStage(id);
@@ -469,12 +553,16 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
         this.save(record);
         ids.push(id);
         try {
-          const engineId = await this.provider.add(url, id);
+          const engineId = await this.provider.add(url, id, accountId);
           record = { ...record, engineId, phase: 'active' };
           this.save(record);
         } catch (error) {
-          if (error instanceof ProviderError && ['rejected', 'auth'].includes(error.kind))
-            this.save({ ...record, phase: 'rejected' });
+          if (
+            error instanceof HostDownloadError ||
+            error instanceof BadRequestException ||
+            (error instanceof ProviderError && ['rejected', 'auth'].includes(error.kind))
+          )
+            this.save({ ...record, phase: 'rejected', downloadError: error.message });
         }
       }
       return { ids };
@@ -494,8 +582,11 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
         this.save({ ...record, publicationError: undefined });
         this.startPublication();
       } else if (action === 'cancel' || action === 'remove') {
-        if (action === 'cancel' && record.phase === 'completed')
-          throw new ConflictException('La descarga ya está publicada.');
+        if (
+          action === 'cancel' &&
+          (record.phase === 'completed' || this.tasks.get(id)?.status === 'done')
+        )
+          throw new ConflictException('La descarga ya está completa.');
         if (record.cleaned) {
           if (action === 'remove') this.forget(id);
         } else {

@@ -25,6 +25,9 @@ import { Downloads } from './downloads';
 import { DownloadPublication } from './download-publication';
 import { GopeedDownloadProvider } from './gopeed';
 import { DOWNLOAD_PROVIDER } from './download-provider';
+import { DownloadAccounts } from './download-accounts';
+import { DownloadRouting } from './download-routing';
+import { MegaDownloads } from './mega-downloads';
 @Module({
   controllers: [PublicController, ApiController, DownloadsController],
   providers: [
@@ -42,7 +45,10 @@ import { DOWNLOAD_PROVIDER } from './download-provider';
     MediaInfo,
     Downloads,
     DownloadPublication,
-    { provide: DOWNLOAD_PROVIDER, useClass: GopeedDownloadProvider },
+    DownloadAccounts,
+    GopeedDownloadProvider,
+    MegaDownloads,
+    { provide: DOWNLOAD_PROVIDER, useClass: DownloadRouting },
   ],
 })
 class AppModule {}

@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.3.0
+
+- Ajustes de descargas con carpeta predeterminada en Downloads o PlexMedia y destino alternativo para cada lote.
+- Cuentas de 1fichier, MEGA y Real-Debrid con secretos cifrados. Descarga de enlaces públicos de archivos y carpetas de MEGA.
+- Búsqueda por nombre, filtros de estado, destino en el historial y velocidad total de las descargas.
+
 ## 0.2.0
 
 - Gestor de descargas integrado con Gopeed 1.9.3, con alta por lotes, progreso, pausa, reanudación y cancelación.

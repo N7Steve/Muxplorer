@@ -1,28 +1,234 @@
 <header class="downloads-heading">
   <h1>Descargas</h1>
-  @if (snapshot(); as current) {
-  <span class="engine-state" [class.online]="available()">
-    <span class="status-dot" [class.warning]="!available()"></span>
-    @switch (current.engine.status) { @case ('connected') { Gopeed {{ current.engine.version }} }
-    @case ('disabled') { Gopeed desactivado } @case ('connecting') { Conectando con Gopeed… }
-    @default { Gopeed desconectado } }
-  </span>
-  }
+  <div class="download-toolbar">
+    @if (snapshot(); as current) {
+    <span class="engine-state" [class.online]="available()">
+      <span class="status-dot" [class.warning]="!available()"></span>
+      @switch (current.engine.status) { @case ('connected') { Gopeed {{ current.engine.version }} }
+      @case ('disabled') { Gopeed desactivado } @case ('connecting') { Conectando con Gopeed… }
+      @default { Gopeed desconectado } }
+    </span>
+    }
+    <button
+      class="button compact secondary"
+      [attr.aria-expanded]="showSettings()"
+      (click)="toggleSettings()"
+    >
+      <mx-icon name="Settings2" [size]="16" />Ajustes
+    </button>
+  </div>
 </header>
 
 @if (statusMessage(); as message) {
 <p class="downloads-message" role="status">{{ message }}</p>
+} @if (showSettings()) {
+<section class="download-settings" aria-label="Ajustes de descargas">
+  <h2>Ajustes de descargas</h2>
+  @if (settings(); as config) {
+  <div class="setting-row">
+    <div>
+      <strong>Carpeta predeterminada</strong>
+      <div class="download-path">{{ display(config.destination) }}</div>
+    </div>
+    <button class="button compact secondary" [disabled]="saving()" (click)="picker.set('default')">
+      <mx-icon name="FolderOpen" [size]="16" />Cambiar carpeta
+    </button>
+  </div>
+  <div class="setting-row">
+    <div>
+      <strong>Cuentas</strong>
+      <div class="download-path">
+        Elige una cuenta al añadir enlaces. Los enlaces públicos de MEGA también admiten descarga
+        sin cuenta.
+      </div>
+    </div>
+    <button
+      class="button compact secondary"
+      [disabled]="saving()"
+      (click)="editAccount({ id: '', provider: '1fichier', label: '' })"
+    >
+      <mx-icon name="Plus" [size]="16" />Añadir cuenta
+    </button>
+  </div>
+  @if (config.accounts.length) {
+  <ul class="account-list" aria-label="Cuentas guardadas">
+    @for (account of config.accounts; track account.id) {
+    <li class="setting-row">
+      <div>
+        <strong>{{ account.label }}</strong>
+        <div class="download-path">
+          {{ providers[account.provider] }} @if (account.email) { · {{ account.email }} }
+        </div>
+      </div>
+      <div class="download-toolbar">
+        <button
+          class="button compact ghost"
+          [disabled]="saving()"
+          (click)="editAccount(account)"
+          [attr.aria-label]="'Editar ' + account.label"
+        >
+          Editar
+        </button>
+        <button
+          class="button compact ghost danger-hover"
+          [disabled]="saving()"
+          (click)="removeAccount(account)"
+          [attr.aria-label]="'Eliminar cuenta ' + account.label"
+        >
+          Eliminar
+        </button>
+      </div>
+    </li>
+    }
+  </ul>
+  } @if (accountDraft(); as draft) {
+  <form class="account-form" (ngSubmit)="saveAccount(draft)">
+    <label
+      >Proveedor
+      <select name="provider" [(ngModel)]="draft.provider" [disabled]="!!draft.id || saving()">
+        <option value="1fichier">1fichier</option>
+        <option value="mega">MEGA</option>
+        <option value="real-debrid">Real-Debrid</option>
+      </select>
+    </label>
+    <label
+      >Nombre de la cuenta
+      <input name="label" [(ngModel)]="draft.label" required maxlength="80" [disabled]="saving()" />
+    </label>
+    @if (draft.provider === 'mega') {
+    <label
+      >Correo de MEGA
+      <input
+        name="email"
+        type="email"
+        autocomplete="off"
+        [(ngModel)]="draft.email"
+        required
+        maxlength="254"
+        [disabled]="saving()"
+      />
+    </label>
+    }
+    <label
+      >{{ draft.provider === 'mega' ? 'Contraseña de MEGA' : 'Clave API' }}
+      <input
+        name="secret"
+        type="password"
+        autocomplete="new-password"
+        [(ngModel)]="secret"
+        [required]="!draft.id"
+        [placeholder]="draft.id ? 'Dejar en blanco para conservarla' : ''"
+        maxlength="1024"
+        [disabled]="saving()"
+      />
+    </label>
+    <div class="download-toolbar">
+      <button
+        class="button compact primary"
+        type="submit"
+        [disabled]="saving() || !draft.label.trim() || (!draft.id && !secret)"
+      >
+        Guardar cuenta
+      </button>
+      <button
+        class="button compact ghost"
+        type="button"
+        [disabled]="saving()"
+        (click)="editAccount(null)"
+      >
+        Cerrar formulario
+      </button>
+    </div>
+  </form>
+  } } @else if (saving()) {
+  <p class="downloads-message" role="status">Cargando ajustes…</p>
+  } @else {
+  <button class="button compact secondary" (click)="loadSettings()">
+    Volver a cargar los ajustes
+  </button>
+  } @if (settingsMessage()) {
+  <p class="downloads-message" role="status">{{ settingsMessage() }}</p>
+  }
+</section>
+} @if (settingsError()) {
+<p class="downloads-message failure" role="alert">{{ settingsError() }}</p>
+} @if (picker() === 'default' && settings(); as config) {
+<section class="download-picker picker-area" aria-label="Elegir carpeta predeterminada">
+  <mx-explorer
+    #defaultFolder
+    panelId="download-default"
+    [picker]="true"
+    [initialLocation]="config.destination"
+  />
+  <div class="download-toolbar">
+    <button
+      type="button"
+      class="button compact primary"
+      [disabled]="saving() || defaultFolder.loading() || !!defaultFolder.error()"
+      (click)="selectDestination(defaultFolder.location())"
+    >
+      Guardar como predeterminada
+    </button>
+    <button
+      type="button"
+      class="button compact ghost"
+      [disabled]="saving()"
+      (click)="picker.set(null)"
+    >
+      Cerrar selector
+    </button>
+  </div>
+</section>
 }
+
 <form class="download-form" (ngSubmit)="add()">
   <label for="download-links">Enlaces de descarga</label>
   <textarea
     id="download-links"
     name="links"
     rows="3"
-    placeholder="Introduce hasta 20 enlaces HTTP, HTTPS o magnet, uno por línea"
+    placeholder="Hasta 20 enlaces directos, de alojamiento o magnet, uno por línea"
     [(ngModel)]="input"
     [disabled]="!available() || adding()"
   ></textarea>
+  <div class="download-toolbar batch-options">
+    <label
+      >Cuenta para este lote
+      <select name="account" [(ngModel)]="accountId" [disabled]="adding()">
+        <option value="">Sin cuenta</option>
+        @for (account of settings()?.accounts ?? []; track account.id) {
+        <option [value]="account.id">
+          {{ account.label }} · {{ providers[account.provider] }}
+        </option>
+        }
+      </select>
+    </label>
+    @if (destination(); as target) {
+    <div class="batch-destination">
+      <span class="download-path">{{ display(target) }}</span>
+      <div class="download-toolbar">
+        <button
+          type="button"
+          class="button compact secondary"
+          [disabled]="adding()"
+          (click)="picker.set(picker() === 'batch' ? null : 'batch')"
+        >
+          <mx-icon name="FolderOpen" [size]="16" />Elegir carpeta del lote
+        </button>
+        @if (override()) {
+        <button
+          type="button"
+          class="button compact ghost"
+          [disabled]="adding()"
+          (click)="override.set(undefined); picker.set(null)"
+        >
+          Usar predeterminada
+        </button>
+        }
+      </div>
+    </div>
+    }
+  </div>
   <button
     class="button primary"
     type="submit"
@@ -33,9 +239,54 @@
   </button>
 </form>
 
-@if (error()) {
+@if (picker() === 'batch' && destination(); as target) {
+<section class="download-picker picker-area" aria-label="Elegir carpeta del lote">
+  <mx-explorer #batchFolder panelId="download-batch" [picker]="true" [initialLocation]="target" />
+  <div class="download-toolbar">
+    <button
+      type="button"
+      class="button compact primary"
+      [disabled]="adding() || batchFolder.loading() || !!batchFolder.error()"
+      (click)="selectDestination(batchFolder.location())"
+    >
+      Usar esta carpeta
+    </button>
+    <button type="button" class="button compact ghost" (click)="picker.set(null)">
+      Cerrar selector
+    </button>
+  </div>
+</section>
+} @if (error()) {
 <p class="downloads-message failure" role="alert">{{ error() }}</p>
-} @if (snapshot(); as current) { @if (current.tasks.length) {
+} @if (snapshot(); as current) {
+<div class="download-toolbar download-filters">
+  <label
+    >Buscar descargas
+    <input
+      type="search"
+      maxlength="240"
+      [ngModel]="query"
+      (ngModelChange)="query = $event; showPage(0)"
+    />
+  </label>
+  <label
+    >Estado
+    <select [ngModel]="filter" (ngModelChange)="filter = $event; showPage(0)">
+      <option value="all">Todas</option>
+      <option value="active">En curso</option>
+      <option value="paused">En pausa</option>
+      <option value="issues">Con errores</option>
+      <option value="completed">Completadas</option>
+      <option value="cancelled">Canceladas</option>
+    </select>
+  </label>
+  @if (current.active) {
+  <span class="download-path"
+    >{{ current.active }} en curso @if (current.speed) { · {{ bytes(current.speed) }}/s }</span
+  >
+  }
+</div>
+@if (current.tasks.length) {
 <ul class="download-list" aria-label="Descargas">
   @for (task of current.tasks; track task.id) { @let progress = percent(task);
   <li class="download-item">
@@ -56,6 +307,10 @@
       @if (progress !== null) { <span>{{ progress }} %</span> } @if (task.speed) {
       <span>{{ bytes(task.speed) }}/s</span> } @if (eta(task); as remaining) {
       <span>Restan {{ remaining }}</span> }
+    </div>
+    <div class="download-metrics">
+      @if (task.destination; as target) { <span>{{ display(target) }}</span> }
+      <time [attr.datetime]="task.createdAt">{{ task.createdAt | date: 'dd/MM/yyyy HH:mm' }}</time>
     </div>
     @if (task.error) {
     <p class="failure">{{ task.error }}</p>
@@ -101,8 +356,11 @@
 } } @else {
 <div class="state-box">
   <mx-icon name="Download" [size]="30" />
+  @if (filter !== 'all' || query.trim()) {
+  <strong>Ninguna descarga coincide con el filtro</strong>
+  } @else {
   <strong>Sin descargas</strong>
-  @if (available()) { <span>Añade un enlace para empezar.</span> }
+  @if (available()) { <span>Añade un enlace para empezar.</span> } }
 </div>
 } } @else if (!loadingError()) {
 <div class="state-box" role="status">

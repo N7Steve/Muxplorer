@@ -8,7 +8,7 @@ import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-dl-'));
 const project = 'mux-dl-' + Date.now();
 const fixture = project + '-fixture';
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.2.0';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.3.0';
 const token = randomBytes(32).toString('hex');
 const username = 'download-admin';
 const password = 'Muxplorer-download-test-2026';
@@ -97,6 +97,82 @@ const fixtureCode = String.raw`
   }).listen(8080, '0.0.0.0');
 `;
 
+// Exercise the real MEGA decryption library without contacting remote services.
+const megaFixture = String.raw`
+  const assert = require('node:assert/strict');
+  const { randomUUID, createCipheriv } = require('node:crypto');
+  const { mkdir, mkdtemp, readFile, rm } = require('node:fs/promises');
+  const { setTimeout: delay } = require('node:timers/promises');
+  const { encrypt } = require('megajs');
+  require('reflect-metadata');
+  const { Store } = require('./dist/store');
+  const { DownloadAccounts } = require('./dist/download-accounts');
+  const { MegaDownloads } = require('./dist/mega-downloads');
+  const { DownloadPublication } = require('./dist/download-publication');
+  const { Files } = require('./dist/files');
+  const { Processes } = require('./dist/process');
+  const { Paths } = require('./dist/paths');
+
+  async function main() {
+    const content = Buffer.from('Test payload for MEGA');
+    const key = Buffer.alloc(24, 42);
+    const encoder = encrypt(key);
+    encoder.end(Buffer.from(content));
+    const chunks = [];
+    for await (const chunk of encoder) chunks.push(chunk);
+    const ciphertext = Buffer.concat(chunks);
+    const attributes = Buffer.alloc(32);
+    attributes.write('MEGA{"n":"mega-fixture.txt"}');
+    const cipher = createCipheriv('aes-128-cbc', key.subarray(0, 16), Buffer.alloc(16));
+    cipher.setAutoPadding(false);
+    const at = Buffer.concat([cipher.update(attributes), cipher.final()]).toString('base64url');
+    const source = 'https://mega.nz/file/AbCd1234#' + encoder.key.toString('base64url');
+    let corrupt = false;
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(input);
+      if (url.hostname === 'g.api.mega.co.nz') {
+        const [request] = JSON.parse(init.body);
+        assert.equal(request.p, 'AbCd1234');
+        return Response.json([{ at, s: content.length, g: 'https://fixture.userstorage.mega.co.nz/file' }]);
+      }
+      assert.equal(url.hostname, 'fixture.userstorage.mega.co.nz');
+      return new Response(corrupt ? Buffer.alloc(ciphertext.length) : ciphertext);
+    };
+    const root = await mkdtemp('/tmp/mux-mega-');
+    const store = new Store(root + '/config');
+    const volumes = { downloads: root + '/downloads', plex: root + '/plex' };
+    const stage = root + '/stage';
+    const publication = new DownloadPublication(new Files(new Paths(volumes), new Processes()), stage);
+    const accounts = new DownloadAccounts(store);
+    const mega = new MegaDownloads(store, accounts, publication);
+    try {
+      await Promise.all([...Object.values(volumes), stage].map((name) => mkdir(name)));
+      for (const expected of ['done', 'failed']) {
+        const requestId = randomUUID();
+        await publication.createStage(requestId);
+        const id = mega.add(source, requestId);
+        const deadline = Date.now() + 5000;
+        while (mega.get(id).status === 'running' && Date.now() < deadline) await delay(20);
+        const task = mega.get(id);
+        assert.equal(task.status, expected, task.error);
+        if (!corrupt) {
+          await assert.rejects(mega.pause(id), { kind: 'rejected' });
+          const prepared = await publication.prepare(requestId, task);
+          await publication.commit(requestId, prepared, () => {}, () => {});
+          assert.deepEqual(await readFile(volumes.downloads + '/mega-fixture.txt'), content);
+        }
+        await mega.remove(id);
+        corrupt = true;
+      }
+    } finally {
+      await mega.onModuleDestroy();
+      store.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+  main().catch((error) => { console.error(error); process.exitCode = 1; });
+`;
+
 let base,
   cookie = '';
 async function request(
@@ -146,11 +222,11 @@ async function until(label, action, accept) {
 const status = () => request('downloads/status');
 const task = (id) => request('downloads/' + id);
 const fixtureUrl = (name) => 'http://fixture:8080/' + name + '?key=fixture-secret';
-async function create(name, url = fixtureUrl(name)) {
+async function create(name, url = fixtureUrl(name), destination) {
   const id = randomUUID();
   const result = await request('downloads', {
     status: 201,
-    body: { links: [{ id, url }] },
+    body: { links: [{ id, url }], destination },
   });
   assert.deepEqual(result.ids, [id]);
   return id;
@@ -284,6 +360,7 @@ try {
     status: 201,
   });
   assert.deepEqual(preview, { name: 'preview.txt', total: 12, files: 1 });
+  compose('exec', '-T', '-w', '/app/api', 'muxplorer', 'node', '-e', megaFixture);
 
   compose(
     'exec',
@@ -316,6 +393,33 @@ try {
   });
   assert.equal(file(pack + '/first.txt').toString(), 'A'.repeat(12));
   assert.equal(file(pack + '/nested/second.txt').toString(), 'A'.repeat(12));
+
+  await request('downloads/settings', { auth: false, status: 401 });
+  await request('downloads/settings', {
+    body: { destination: { root: 'downloads', path: '../config' } },
+    status: 400,
+  });
+  const destination = { root: 'downloads', path: 'FixturePack/nested' };
+  const settings = await request('downloads/settings', { body: { destination }, status: 201 });
+  assert.deepEqual(settings.destination, destination);
+  const routed = await create('routed.txt');
+  const root = { root: 'downloads', path: '' };
+  await request('downloads/settings', { body: { destination: root }, status: 201 });
+  const alternate = await create('alternate.txt', undefined, destination);
+  const expected = { root: 'downloads', path: destination.path + '/routed.txt' };
+  await until(
+    'destinos de descarga',
+    () => request('downloads?filter=completed'),
+    ({ tasks }) =>
+      tasks.some((item) => item.id === routed) && tasks.some((item) => item.id === alternate),
+  );
+  assert.deepEqual(await request('downloads/' + routed + '/location'), expected);
+  assert.equal(file(destination.path + '/alternate.txt').toString(), 'A'.repeat(12));
+  const filtered = await request('downloads?filter=completed&query=ROUTED');
+  assert.deepEqual(
+    filtered.tasks.map((item) => item.id),
+    [routed],
+  );
 
   const slow = await create('slow.bin');
   await until(

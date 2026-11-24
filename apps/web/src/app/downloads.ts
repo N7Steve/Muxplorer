@@ -9,15 +9,26 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import type {
   Download,
+  DownloadAccount,
+  DownloadAccountProvider,
   DownloadAction,
+  DownloadSettings,
   DownloadStatus,
   DownloadsPage,
   Location,
 } from '@muxplorer/shared';
-import { Api, bytes } from './api';
+import { Api, bytes, displayLocation } from './api';
+import { Explorer } from './explorer';
 import { Icon } from './icon';
+
+interface Submission {
+  links: { id: string; url: string }[];
+  accountId?: string;
+  destination?: Location;
+}
 
 function requestId() {
   // The NAS also supports plain HTTP, where crypto.randomUUID is unavailable.
@@ -36,7 +47,7 @@ function requestId() {
 
 @Component({
   selector: 'mx-downloads',
-  imports: [FormsModule, Icon],
+  imports: [DatePipe, Explorer, FormsModule, Icon],
   templateUrl: './downloads.html',
   styleUrl: './downloads.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,6 +58,21 @@ export class DownloadsView implements OnInit, OnDestroy {
   readonly snapshot = signal<DownloadsPage | null>(null);
   readonly page = signal(0);
   readonly error = signal('');
+  readonly settingsError = signal('');
+  readonly settingsMessage = signal('');
+  readonly settings = signal<DownloadSettings | null>(null);
+  readonly showSettings = signal(false);
+  readonly saving = signal(false);
+  readonly picker = signal<'default' | 'batch' | null>(null);
+  readonly override = signal<Location | undefined>(undefined);
+  readonly destination = computed(() => this.override() ?? this.settings()?.destination);
+  readonly accountDraft = signal<DownloadAccount | null>(null);
+  readonly providers: Record<DownloadAccountProvider, string> = {
+    '1fichier': '1fichier',
+    mega: 'MEGA',
+    'real-debrid': 'Real-Debrid',
+  };
+  readonly display = displayLocation;
   readonly loadingError = signal('');
   readonly statusMessage = computed(() => this.loadingError() || this.snapshot()?.engine.message);
   readonly adding = signal(false);
@@ -78,13 +104,18 @@ export class DownloadsView implements OnInit, OnDestroy {
     publish: 'Reintentar publicación',
   };
   input = '';
-  private submission?: { input: string; links: { id: string; url: string }[] };
+  accountId = '';
+  secret = '';
+  filter = 'all';
+  query = '';
+  private submission?: { key: string; body: Submission };
   private timer?: ReturnType<typeof setTimeout>;
   private request?: AbortController;
   private destroyed = false;
 
   ngOnInit() {
     void this.refresh();
+    void this.loadSettings();
   }
 
   ngOnDestroy() {
@@ -100,8 +131,14 @@ export class DownloadsView implements OnInit, OnDestroy {
     const request = new AbortController();
     this.request = request;
     try {
+      const query = new URLSearchParams({
+        page: String(this.page()),
+        limit: String(this.pageSize),
+        query: this.query.trim(),
+        filter: this.filter,
+      });
       const next = await this.api.request<DownloadsPage>(
-        'downloads?page=' + this.page() + '&limit=' + this.pageSize,
+        'downloads?' + query,
         undefined,
         request.signal,
       );
@@ -138,13 +175,19 @@ export class DownloadsView implements OnInit, OnDestroy {
       this.error.set('Añade un máximo de 20 enlaces por lote.');
       return;
     }
-    if (this.submission?.input !== input) {
-      this.submission = { input, links: urls.map((url) => ({ id: requestId(), url })) };
+    const destination = this.destination();
+    const accountId = this.accountId || undefined;
+    const key = JSON.stringify([input, destination, accountId]);
+    if (this.submission?.key !== key) {
+      this.submission = {
+        key,
+        body: { links: urls.map((url) => ({ id: requestId(), url })), destination, accountId },
+      };
     }
     this.adding.set(true);
     this.error.set('');
     try {
-      await this.api.request('downloads', { links: this.submission.links });
+      await this.api.request('downloads', this.submission.body);
       this.submission = undefined;
       if (this.input.trim() === input) this.input = '';
       this.showPage(0);
@@ -152,6 +195,85 @@ export class DownloadsView implements OnInit, OnDestroy {
       this.error.set(error instanceof Error ? error.message : 'No se pudieron añadir los enlaces.');
     } finally {
       this.adding.set(false);
+    }
+  }
+
+  loadSettings() {
+    return this.changeSettings(async () => {
+      this.settings.set(await this.api.request<DownloadSettings>('downloads/settings'));
+    });
+  }
+
+  toggleSettings() {
+    this.showSettings.update((open) => !open);
+    this.picker.set(null);
+    if (!this.showSettings()) this.editAccount(null);
+    else if (!this.settings()) void this.loadSettings();
+  }
+
+  selectDestination(destination: Location) {
+    if (this.picker() === 'batch') {
+      this.override.set(destination);
+      this.picker.set(null);
+      return;
+    }
+    void this.changeSettings(async () => {
+      this.settings.set(
+        await this.api.request<DownloadSettings>('downloads/settings', { destination }),
+      );
+      this.picker.set(null);
+      this.settingsMessage.set('Carpeta predeterminada guardada.');
+    });
+  }
+
+  editAccount(account: DownloadAccount | null) {
+    this.secret = '';
+    this.accountDraft.set(account && { ...account });
+    this.settingsError.set('');
+    this.settingsMessage.set('');
+  }
+
+  async saveAccount(account: DownloadAccount) {
+    if (!account.label.trim() || (!account.id && !this.secret)) return;
+    await this.changeSettings(async () => {
+      const accounts = await this.api.request<DownloadAccount[]>('downloads/accounts', {
+        ...account,
+        id: account.id || undefined,
+        email: account.provider === 'mega' ? account.email?.trim() : undefined,
+        secret: this.secret || undefined,
+      });
+      this.settings.update((current) => current && { ...current, accounts });
+      this.editAccount(null);
+      this.settingsMessage.set('Cuenta guardada.');
+    });
+  }
+
+  async removeAccount(account: DownloadAccount) {
+    if (!window.confirm('¿Eliminar la cuenta «' + account.label + '»?')) return;
+    await this.changeSettings(async () => {
+      const accounts = await this.api.request<DownloadAccount[]>('downloads/accounts/remove', {
+        id: account.id,
+      });
+      this.settings.update((current) => current && { ...current, accounts });
+      if (this.accountId === account.id) this.accountId = '';
+      if (this.accountDraft()?.id === account.id) this.editAccount(null);
+      this.settingsMessage.set('Cuenta eliminada.');
+    });
+  }
+
+  private async changeSettings(update: () => Promise<void>) {
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.settingsError.set('');
+    this.settingsMessage.set('');
+    try {
+      await update();
+    } catch (error) {
+      this.settingsError.set(
+        error instanceof Error ? error.message : 'No se pudieron actualizar los ajustes.',
+      );
+    } finally {
+      this.saving.set(false);
     }
   }
 

@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthGuard } from './auth';
-import { parse } from './contracts';
+import { location, parse } from './contracts';
+import { DownloadAccounts } from './download-accounts';
 import { Downloads } from './downloads';
 
 const id = z.uuid().transform((value) => value.toLowerCase());
@@ -30,6 +31,8 @@ const url = z
 const batch = z
   .object({
     links: z.array(z.object({ id, url }).strict()).min(1).max(20),
+    destination: location.optional(),
+    accountId: id.optional(),
   })
   .strict()
   .refine(
@@ -40,18 +43,44 @@ const pagination = z
   .object({
     page: z.coerce.number().int().min(0).max(1_000_000).default(0),
     limit: z.coerce.number().int().min(1).max(100).default(30),
+    filter: z.enum(['all', 'active', 'paused', 'issues', 'completed', 'cancelled']).default('all'),
+    query: z.string().trim().max(240).default(''),
   })
   .strict();
 const action = z.enum(['pause', 'resume', 'cancel', 'remove', 'publish']);
+const accountFields = {
+  id: id.optional(),
+  label: z.string().trim().min(1).max(80),
+};
+const token = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1024)
+  .regex(/^[\x21-\x7e]+$/)
+  .optional();
+const account = z.discriminatedUnion('provider', [
+  z.strictObject({ ...accountFields, provider: z.literal('1fichier'), secret: token }),
+  z.strictObject({ ...accountFields, provider: z.literal('real-debrid'), secret: token }),
+  z.strictObject({
+    ...accountFields,
+    provider: z.literal('mega'),
+    email: z.email().max(254),
+    secret: z.string().min(1).max(1024).optional(),
+  }),
+]);
 
 @Controller('api/downloads')
 @UseGuards(AuthGuard)
 export class DownloadsController {
-  constructor(private readonly downloads: Downloads) {}
+  constructor(
+    private readonly downloads: Downloads,
+    private readonly accounts: DownloadAccounts,
+  ) {}
 
   @Get() list(@Query() query: unknown) {
-    const { page, limit } = parse(pagination, query);
-    return this.downloads.list(page, limit);
+    const { page, limit, filter, query: name } = parse(pagination, query);
+    return this.downloads.list(page, limit, filter, name);
   }
 
   @Get('status') status() {
@@ -59,11 +88,31 @@ export class DownloadsController {
   }
 
   @Post() add(@Body() body: unknown) {
-    return this.downloads.add(parse(batch, body).links);
+    const { links, destination, accountId } = parse(batch, body);
+    return this.downloads.add(links, destination, accountId);
   }
 
   @Post('resolve') analyze(@Body() body: unknown) {
-    return this.downloads.analyze(parse(z.object({ url }).strict(), body).url);
+    const source = parse(z.strictObject({ url, accountId: id.optional() }), body);
+    return this.downloads.analyze(source.url, source.accountId);
+  }
+
+  @Get('settings') settings() {
+    return { destination: this.downloads.destination(), accounts: this.accounts.list() };
+  }
+
+  @Post('settings') async setSettings(@Body() body: unknown) {
+    const { destination } = parse(z.strictObject({ destination: location }), body);
+    await this.downloads.setDestination(destination);
+    return this.settings();
+  }
+
+  @Post('accounts') saveAccount(@Body() body: unknown) {
+    return this.accounts.save(parse(account, body));
+  }
+
+  @Post('accounts/remove') removeAccount(@Body() body: unknown) {
+    return this.accounts.remove(parse(z.strictObject({ id }), body).id);
   }
 
   @Get(':id') detail(@Param('id') value: string) {

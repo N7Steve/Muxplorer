@@ -30,6 +30,7 @@ export class Explorer {
   readonly api = inject(Api);
   readonly panelId = input('left');
   readonly initialRoot = input<RootId>('downloads');
+  readonly initialLocation = input<Location>();
   readonly active = input(false);
   readonly picker = input(false);
   readonly filePicker = input(false);
@@ -90,7 +91,7 @@ export class Explorer {
   constructor() {
     effect(() => {
       const root = this.initialRoot();
-      this.location.set({ root, path: '' });
+      this.location.set(this.initialLocation() ?? { root, path: '' });
     });
     effect(() => {
       const location = this.location();

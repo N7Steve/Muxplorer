@@ -32,6 +32,91 @@ h1 {
 .engine-state.online {
   color: var(--green);
 }
+.download-toolbar,
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.download-settings,
+.download-picker {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  min-width: 0;
+}
+.download-settings h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+.setting-row,
+.batch-options {
+  justify-content: space-between;
+}
+.setting-row + .setting-row {
+  margin-top: 0.8rem;
+}
+.account-list {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0.65rem 0 0;
+  border-top: 1px solid var(--line);
+}
+.account-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  align-items: end;
+  gap: 0.7rem;
+  padding-top: 0.8rem;
+}
+.download-path {
+  color: var(--muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.download-picker {
+  padding: 0.65rem;
+}
+.download-picker mx-explorer {
+  display: block;
+  height: 18rem;
+  margin-bottom: 0.65rem;
+}
+.account-form label,
+.download-toolbar label,
+.batch-destination {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.batch-options {
+  align-items: end;
+}
+.download-filters {
+  margin: 0 0 0.8rem;
+  align-items: end;
+}
+.download-filters label:first-child {
+  flex: 1 1 12rem;
+}
+.account-form input,
+.account-form select,
+.download-toolbar input,
+.download-toolbar select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.15rem;
+  padding: 0.25rem 0.55rem;
+  color: inherit;
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+}
 .download-form {
   display: grid;
   gap: 0.6rem;

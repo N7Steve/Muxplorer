@@ -7,9 +7,9 @@ import type { Location } from '@muxplorer/shared';
 import { config } from './config';
 import { Files } from './files';
 import type { EngineTask } from './download-provider';
-import { relativePath, safeName } from './paths';
+import { childLocation, relativePath, safeName } from './paths';
 
-const destination: Location = { root: 'downloads', path: '' };
+export const defaultDownloadDestination: Location = { root: 'downloads', path: '' };
 const noFollow = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const directoryFlags = noFollow | constants.O_DIRECTORY;
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
@@ -94,11 +94,37 @@ export class DownloadPublication {
     await rm(path.join(await this.staging(), id), { recursive: true, force: true });
   }
 
-  cleanPrepared(id: string) {
-    return this.files.cleanup(destination, 'download-' + id);
+  async checkDestination(destination: Location) {
+    const directory = await this.files.paths.directory(destination);
+    await access(directory, constants.W_OK | constants.X_OK);
   }
 
-  async prepare(id: string, task: EngineTask): Promise<Publication> {
+  async cleanPrepared(id: string, destination = defaultDownloadDestination) {
+    try {
+      await this.files.cleanup(destination, 'download-' + id);
+    } catch (error) {
+      if (!missing(error)) throw error;
+    }
+  }
+
+  async prepare(
+    id: string,
+    task: EngineTask,
+    destination = defaultDownloadDestination,
+  ): Promise<Publication> {
+    await this.cleanPrepared(id, destination);
+    const staging = {
+      ...destination,
+      path: [destination.path, '.muxplorer-download-' + id].filter(Boolean).join('/'),
+    };
+    return this.files.exclusive([staging], () => this.copyToDestination(id, task, destination));
+  }
+
+  private async copyToDestination(
+    id: string,
+    task: EngineTask,
+    destination: Location,
+  ): Promise<Publication> {
     const resource = task.resource;
     if (task.status !== 'done' || !resource?.files.length)
       throw new PublicationError('Gopeed todavía no tiene un resultado verificable.');
@@ -118,7 +144,6 @@ export class DownloadPublication {
       manifest.set(relative, !directory && file.size === 0 ? resource.size : file.size);
     }
 
-    await this.cleanPrepared(id);
     const work = await this.files.staging(destination, 'download-' + id);
     const prepared = path.join(work, 'payload');
     const source = await open(await this.staging(), directoryFlags);
@@ -212,37 +237,36 @@ export class DownloadPublication {
     }
   }
 
-  async commit(
+  commit(
     id: string,
     publication: Publication,
     journal: (record: Publication) => void,
     complete: (name: string) => void,
+    destination = defaultDownloadDestination,
   ) {
-    const root = await this.files.paths.directory(destination);
-    const prepared = path.join(root, '.muxplorer-download-' + id, 'payload');
-    const source = await statIfPresent(prepared);
-    if (!source) {
-      // The rename may have succeeded before SQLite committed. Only recognize
-      // the journaled inode; an unrelated file or a user move is ambiguous.
-      const target = safeName(publication.target);
-      await this.files.exclusive([{ ...destination, path: target }], async () => {
+    return this.files.exclusive([destination], async () => {
+      const root = await this.files.paths.directory(destination);
+      const prepared = path.join(root, '.muxplorer-download-' + id, 'payload');
+      const source = await statIfPresent(prepared);
+      if (!source) {
+        // The rename may have succeeded before SQLite committed. Only recognize
+        // the journaled inode; an unrelated file or a user move is ambiguous.
+        const target = safeName(publication.target);
         if (!matches(await statIfPresent(path.join(root, target)), publication.identity))
           throw new PublicationError(
             'No se pudo confirmar el destino de una publicación interrumpida.',
           );
         await syncDirectory(root);
         complete(target);
-      });
-      return;
-    }
-    if (!matches(source, publication.identity))
-      throw new PublicationError('La copia preparada ha cambiado; publicación bloqueada.');
+        return;
+      }
+      if (!matches(source, publication.identity))
+        throw new PublicationError('La copia preparada ha cambiado; publicación bloqueada.');
 
-    for (let index = 0; index < 1000; index++) {
-      const name = suffixed(publication.name, index, source.isDirectory());
-      const done = await this.files.exclusive([{ ...destination, path: name }], async () => {
+      for (let index = 0; index < 1000; index++) {
+        const name = suffixed(publication.name, index, source.isDirectory());
         const target = path.join(root, name);
-        if (await statIfPresent(target)) return false;
+        if (await statIfPresent(target)) continue;
         journal({ ...publication, target: name });
         try {
           await this.files.publish(prepared, destination, name);
@@ -251,22 +275,21 @@ export class DownloadPublication {
             (await statIfPresent(target)) &&
             matches(await statIfPresent(prepared), publication.identity)
           )
-            return false;
+            continue;
           throw error;
         }
         await syncDirectory(root);
         if (!matches(await statIfPresent(target), publication.identity))
           throw new PublicationError('El destino cambió durante la publicación.');
         complete(name);
-        return true;
-      });
-      if (done) return;
-    }
-    throw new PublicationError('No se encontró un nombre libre en Downloads.');
+        return;
+      }
+      throw new PublicationError('No se encontró un nombre libre en la carpeta de destino.');
+    });
   }
 
-  async result(name: string, identity: Identity) {
-    const result = { ...destination, path: safeName(name) };
+  async result(name: string, identity: Identity, destination = defaultDownloadDestination) {
+    const result = childLocation(destination, name);
     try {
       if (matches(await statIfPresent(await this.files.paths.resolve(result)), identity))
         return result;

@@ -43,9 +43,17 @@ docker compose --profile downloads up --build -d
 
 Para detener ambos servicios, usa `docker compose --profile downloads down`.
 
-Abre **Descargas** desde la barra lateral o el icono de la cabecera en móvil. Pega hasta 20 enlaces HTTP, HTTPS o magnet de BitTorrent por lote. Puedes consultar el progreso, pausar, reanudar y cancelar. **Abrir en el explorador** selecciona el archivo o paquete publicado en Downloads. Desde ahí puedes extraer, abrir en los motores multimedia o moverlo a PlexMedia con los controles habituales.
+Abre **Descargas** y pega hasta 20 enlaces por lote. En **Ajustes** puedes guardar una carpeta predeterminada de Downloads o PlexMedia. Puedes elegir otra carpeta para el lote. Las tareas guardan su destino al crearse. Usa la búsqueda y el filtro de estado para encontrar tareas y **Abrir en el explorador** para seleccionar el resultado publicado.
 
-Gopeed conserva las tareas activas en `gopeed_storage` y escribe el contenido parcial en `gopeed_staging`, fuera de las raíces del explorador. NestJS consulta su API privada y SQLite conserva los identificadores y el estado de publicación. Al terminar, Muxplorer verifica los archivos esperados, prepara una copia privada y publica el archivo o carpeta en la raíz de Downloads con un renombrado atómico. Si el nombre existe añade un sufijo. La copia puede requerir espacio para el resultado tanto en el almacenamiento Docker como en Downloads. La tarea publicada pasa al historial de Muxplorer y se retira de Gopeed, lo que termina el seeding. **Eliminar** retira el registro y conserva el contenido publicado.
+En **Ajustes → Cuentas**, guarda una o varias cuentas y selecciona la que quieras usar para el lote.
+
+- **1fichier** usa una clave API de una cuenta con acceso a la API de descargas.
+- **MEGA** admite enlaces compartidos de archivos y carpetas con su clave de descifrado. Puedes descargar como invitado o usar una cuenta con correo y contraseña. El inicio de sesión con verificación en dos pasos queda fuera de esta versión. Al reanudar una transferencia de MEGA se vuelve a descargar desde el principio para verificar la integridad del contenido.
+- **Real-Debrid** usa un token API y genera un enlace directo de los alojamientos admitidos por tu cuenta. Si un enlace temporal de 1fichier o Real-Debrid caduca, vuelve a añadir el enlace original para generar otro.
+
+Gopeed conserva las tareas HTTP y BitTorrent en `gopeed_storage`. Todas las transferencias se preparan en `gopeed_staging`. Muxplorer verifica el resultado y lo publica en la carpeta seleccionada mediante un renombrado atómico con sufijo si hay colisión. La operación necesita espacio para una copia en el destino. En BitTorrent, la publicación termina el seeding. **Eliminar** retira el registro y conserva el contenido publicado.
+
+El volumen `/config` contiene el historial, los ajustes, las credenciales cifradas y su clave local. Conserva el volumen completo para mantener el acceso a tus cuentas al actualizar. Introduce las credenciales desde una conexión HTTPS al servidor.
 
 Las descargas continúan con el navegador cerrado. Si se pierde la conexión con Gopeed, el explorador sigue disponible y la sección Descargas muestra el estado del motor. Conserva `/config`, `gopeed_storage` y `gopeed_staging` al actualizar. Gopeed carece de puerto publicado y NestJS se autentica por token. Gopeed puede alcanzar los destinos permitidos por la conectividad saliente del host, incluidas las redirecciones y los trackers. En despliegues con restricciones de salida, aplica esas reglas también al contenedor.
 
@@ -82,7 +90,7 @@ La compilación y publicación se realizan localmente desde el PC de desarrollo 
 publica imágenes en GHCR. Para fijar una versión exacta o volver atrás, sustituye `latest`
 por una etiqueta `sha-...` o versión publicada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.2.0 .`, exporta con `docker save -o muxplorer-0.2.0.tar muxplorer:0.2.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.2.0` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.3.0 .`, exporta con `docker save -o muxplorer-0.3.0.tar muxplorer:0.3.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.3.0` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -194,7 +202,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.2.0 .
+docker build -t muxplorer:0.3.0 .
 pnpm test:docker
 pnpm test:downloads
 pnpm exec playwright install chromium

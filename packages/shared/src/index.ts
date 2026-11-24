@@ -29,11 +29,25 @@ export interface Download {
   actions: DownloadAction[];
   error?: string;
   result?: Location;
+  destination?: Location;
+}
+export type DownloadAccountProvider = '1fichier' | 'mega' | 'real-debrid';
+export interface DownloadAccount {
+  id: string;
+  provider: DownloadAccountProvider;
+  label: string;
+  email?: string;
+}
+export interface DownloadSettings {
+  destination: Location;
+  accounts: DownloadAccount[];
 }
 export interface DownloadsPage {
   engine: DownloadEngine;
   tasks: Download[];
   total: number;
+  active?: number;
+  speed?: number;
 }
 export type DownloadAction = 'pause' | 'resume' | 'cancel' | 'remove' | 'publish';
 export interface Root {

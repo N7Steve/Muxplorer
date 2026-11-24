@@ -22,6 +22,9 @@ import { Paths, relativePath } from '../src/paths';
 import { Processes } from '../src/process';
 import { GopeedDownloadProvider, engineDirectory } from '../src/gopeed';
 import { ProviderError, type EngineTask } from '../src/download-provider';
+import { DownloadAccounts } from '../src/download-accounts';
+import { DownloadRouting } from '../src/download-routing';
+import { MegaDownloads } from '../src/mega-downloads';
 
 test('Gopeed v1.9.3 REST contract, credentials, failures and missing tasks', async (t) => {
   const calls: { method: string; path: string; body: unknown }[] = [];
@@ -100,6 +103,70 @@ function fixture(id: string, status: EngineTask['status'] = 'done'): EngineTask 
     speed: 0,
   };
 }
+
+test('download accounts protect credentials and resolve premium links at the corresponding host', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mux-download-accounts-'));
+  const store = new Store(root);
+  t.after(async () => {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const accounts = new DownloadAccounts(store);
+  const [fichier] = accounts.save({
+    provider: '1fichier',
+    label: 'Premium',
+    secret: 'private-key',
+  });
+  assert.deepEqual(Object.keys(fichier).sort(), ['email', 'id', 'label', 'provider']);
+  assert.doesNotMatch(store.get('downloadAccounts')!, /private-key/);
+  accounts.save({ ...fichier, label: 'Cuenta principal' });
+  assert.equal(new DownloadAccounts(store).get(fichier.id).secret, 'private-key');
+  const debrid = accounts.save({
+    provider: 'real-debrid',
+    label: 'Debrid',
+    secret: 'private-token',
+  })[1];
+  const engine = new GopeedDownloadProvider('http://gopeed:9999', 'engine-secret');
+  const mega = new MegaDownloads(
+    store,
+    accounts,
+    new DownloadPublication(new Files(new Paths(), new Processes())),
+  );
+  const routing = new DownloadRouting(engine, mega, accounts);
+  t.mock.method(globalThis, 'fetch', async (input: URL | string, init: RequestInit) => {
+    switch (new URL(input).hostname) {
+      case 'api.1fichier.com':
+        assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer private-key');
+        assert.equal(JSON.parse(String(init.body)).url, 'https://1fichier.com/?test');
+        return Response.json({ status: 'OK', url: 'https://files.example.org/one' });
+      case 'api.real-debrid.com':
+        assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer private-token');
+        assert.equal(String(init.body), 'link=https%3A%2F%2Fhost.example.org%2Ftwo');
+        return Response.json({ download: 'https://files.example.org/two' });
+      default: {
+        assert.equal(new URL(input).host, 'gopeed:9999');
+        const { req } = JSON.parse(String(init.body));
+        assert.match(req.url, /^https:\/\/files\.example\.org\/(one|two)$/);
+        assert.equal(req.extra, undefined);
+        return Response.json({ code: 0, data: 'gopeed-task' });
+      }
+    }
+  });
+  assert.throws(
+    () => routing.validate('https://mega.nz/file/example#key', fichier.id),
+    /no admite/,
+  );
+  assert.equal(
+    await routing.add('https://1fichier.com/?test', randomUUID(), fichier.id),
+    'gopeed-task',
+  );
+  assert.equal(
+    await routing.add('https://host.example.org/two', randomUUID(), debrid.id),
+    'gopeed-task',
+  );
+  accounts.remove(fichier.id);
+  assert.throws(() => routing.validate('https://1fichier.com/?test', fichier.id), /ya no existe/);
+});
 
 test('deduplicates concurrent submissions and reconciles an uncertain POST after restart', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'mux-downloads-'));
