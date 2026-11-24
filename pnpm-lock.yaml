@@ -50,6 +50,9 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.3.0
+      htmlparser2:
+        specifier: 10.1.0
+        version: 10.1.0
       megajs:
         specifier: 1.3.10
         version: 1.3.10

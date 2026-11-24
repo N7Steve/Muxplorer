@@ -1,11 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { DownloadLinkCheck } from '@muxplorer/shared';
+import type { DownloadAccountProvider, DownloadLinkCheck } from '@muxplorer/shared';
 import { DownloadHosts, nativeHost } from './download-hosts';
 import { DownloadAccounts } from './download-accounts';
 import { type DownloadProvider, HostDownloadError } from './download-provider';
 import { GopeedDownloadProvider } from './gopeed';
 import { MegaDownloads, megaHost } from './mega-downloads';
 import { safeName } from './paths';
+
+const providerHost = (provider: DownloadAccountProvider) =>
+  provider === '1fichier-web' ? '1fichier' : provider;
 
 @Injectable()
 export class DownloadRouting implements DownloadProvider {
@@ -42,7 +45,7 @@ export class DownloadRouting implements DownloadProvider {
     if (
       account &&
       (!['http:', 'https:'].includes(source.protocol) ||
-        (account.provider !== 'real-debrid' && account.provider !== host))
+        (account.provider !== 'real-debrid' && providerHost(account.provider) !== host))
     )
       throw new BadRequestException('La cuenta seleccionada no admite este enlace.');
     if (
@@ -72,7 +75,7 @@ export class DownloadRouting implements DownloadProvider {
     const accounts = this.accounts.list().filter((account) => account.status !== 'invalid');
     accounts.sort((a, b) => Number(b.status === 'connected') - Number(a.status === 'connected'));
     const native = accounts.filter(
-      (account) => account.provider === host && (host !== 'mega' || publicMega),
+      (account) => providerHost(account.provider) === host && (host !== 'mega' || publicMega),
     );
     const debrid = accounts.filter((account) => account.provider === 'real-debrid');
     let failure: unknown;

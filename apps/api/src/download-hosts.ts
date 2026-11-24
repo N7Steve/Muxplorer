@@ -5,9 +5,10 @@ import type {
 } from '@muxplorer/shared';
 import { z } from 'zod';
 import { HostDownloadError } from './download-provider';
+import { FichierWebsite } from './fichier-website';
 
 type Credentials = DownloadAccount & { secret: string };
-type NativeHost = Exclude<DownloadAccountProvider, 'mega' | 'real-debrid'>;
+type NativeHost = Exclude<DownloadAccountProvider, 'mega' | 'real-debrid' | '1fichier-web'>;
 type Json = Record<string, unknown>;
 type PublicLink =
   | { link: string; name?: string; total?: number }
@@ -102,7 +103,10 @@ function accepted(http: number) {
 
 function fichierError(http: number, data: Json, checkingFile = false) {
   const message = String(data.message ?? '');
-  if (http === 429 || /too many requests|rate limit|requests? too frequent/i.test(message))
+  if (
+    http === 429 ||
+    /too many requests|rate limit|requests? too frequent|flood detected/i.test(message)
+  )
     throw new AccountRejected('rate-limited');
   if (/captcha/i.test(message)) throw captcha();
   if (
@@ -119,6 +123,7 @@ function fichierError(http: number, data: Json, checkingFile = false) {
 }
 
 export class DownloadHosts {
+  private readonly fichierWebsite = new FichierWebsite();
   private readonly rapidSessions = new Map<
     string,
     { secret: string; expires: number; token: Promise<string> }
@@ -152,6 +157,7 @@ export class DownloadHosts {
   }
 
   forget(id: string) {
+    this.fichierWebsite.forget(id);
     this.rapidSessions.delete(id);
   }
 
@@ -243,6 +249,8 @@ export class DownloadHosts {
   async verify(account: Credentials): Promise<DownloadAccountStatus> {
     try {
       switch (account.provider) {
+        case '1fichier-web':
+          return this.fichierWebsite.verify(account);
         case '1fichier': {
           const { http, data } = await request(
             fichier,
@@ -338,6 +346,8 @@ export class DownloadHosts {
       const url = source.href;
       let result: { link: string; name?: string; total?: number };
       switch (account.provider) {
+        case '1fichier-web':
+          return await this.fichierWebsite.direct(source, account);
         case '1fichier': {
           if (checking) {
             const info = await request(

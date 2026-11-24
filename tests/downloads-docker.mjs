@@ -8,7 +8,7 @@ import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-dl-'));
 const project = 'mux-dl-' + Date.now();
 const fixture = project + '-fixture';
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.4.1';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.5.0';
 const token = randomBytes(32).toString('hex');
 const username = 'download-admin';
 const password = 'Muxplorer-download-test-2026';

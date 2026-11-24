@@ -17,14 +17,19 @@ test('Descargas recibe progreso, conserva el explorador y selecciona el resultad
   await expect(page.getByText(/Gopeed v?1\.9\.3/)).toBeVisible();
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   await page.getByRole('button', { name: 'Añadir cuenta' }).click();
+  const provider = page.getByRole('combobox', { name: 'Proveedor' });
+  await provider.selectOption('1fichier-web');
+  await expect(page.getByLabel(/Correo de 1fichier/)).toBeVisible();
+  await expect(page.getByLabel('Contraseña', { exact: true })).toBeVisible();
+  await provider.selectOption('1fichier');
   await page.getByLabel('Nombre de la cuenta').fill('Cuenta de prueba');
-  await page.getByLabel('Clave API').fill('fixture-secret-account');
+  await page.getByLabel('Clave API', { exact: true }).fill('fixture-secret-account');
   await page.getByRole('button', { name: 'Guardar cuenta' }).click();
   await expect(page.getByRole('list', { name: 'Cuentas guardadas' })).toContainText(
     'Cuenta de prueba',
   );
   await page.getByRole('button', { name: 'Editar Cuenta de prueba' }).click();
-  await expect(page.getByLabel('Clave API')).toHaveValue('');
+  await expect(page.getByLabel('Clave API', { exact: true })).toHaveValue('');
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Eliminar cuenta Cuenta de prueba' }).click();
   await expect(page.getByRole('list', { name: 'Cuentas guardadas' })).toHaveCount(0);

@@ -33,9 +33,23 @@ export interface Download {
   multipart?: DownloadPart & { expected: number };
 }
 export type DownloadAccountProvider =
-  '1fichier' | 'mega' | 'real-debrid' | 'terabox' | 'nitroflare' | 'rapidgator' | 'katfile';
+  | '1fichier'
+  | '1fichier-web'
+  | 'mega'
+  | 'real-debrid'
+  | 'terabox'
+  | 'nitroflare'
+  | 'rapidgator'
+  | 'katfile';
 export type DownloadAccountStatus =
-  'unchecked' | 'connected' | 'invalid' | 'unavailable' | 'captcha' | 'restricted' | 'rate-limited';
+  | 'unchecked'
+  | 'connected'
+  | 'invalid'
+  | 'unavailable'
+  | 'captcha'
+  | 'restricted'
+  | 'rate-limited'
+  | 'two-factor';
 export interface DownloadAccount {
   id: string;
   provider: DownloadAccountProvider;

@@ -24,6 +24,7 @@ import { GopeedDownloadProvider, engineDirectory } from '../src/gopeed';
 import { ProviderError, type EngineTask } from '../src/download-provider';
 import { DownloadAccounts } from '../src/download-accounts';
 import { DownloadHosts } from '../src/download-hosts';
+import { FichierWebsite } from '../src/fichier-website';
 import { DownloadRouting } from '../src/download-routing';
 import { MegaDownloads } from '../src/mega-downloads';
 
@@ -199,6 +200,80 @@ test('1fichier distinguishes authentication errors, access restrictions and rate
     /limitó las solicitudes/,
   );
   assert.equal(fetch.mock.callCount(), 5);
+});
+
+test('1fichier web login uses a scoped session to resolve a download form', async (t) => {
+  const website = new FichierWebsite();
+  const account = {
+    id: randomUUID(),
+    label: 'Web',
+    provider: '1fichier-web' as const,
+    email: 'test@example.org',
+    secret: 'web password',
+  };
+  const source = new URL('https://1fichier.com/?abcde');
+  const direct = 'https://cdn.1fichier.com/ticket/file.bin';
+  const fetch = t.mock.method(globalThis, 'fetch', async (input: URL, init: RequestInit) => {
+    const headers = new Headers(init.headers);
+    assert.equal(input.hostname, '1fichier.com');
+    assert.equal(init.redirect, 'manual');
+    assert.equal(headers.has('Authorization'), false);
+    if (input.pathname === '/login.pl' && init.method === 'GET')
+      return new Response('<form></form>');
+    if (input.pathname === '/login.pl') {
+      const form = init.body as URLSearchParams;
+      assert.equal(form.get('mail'), account.email);
+      assert.equal(form.get('pass'), account.secret);
+      assert.equal(form.has('purge'), false);
+      assert.equal(form.has('lt'), false);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/console/index.pl',
+          'Set-Cookie': 'SID=test-session; Path=/; Secure; HttpOnly',
+        },
+      });
+    }
+    assert.equal(headers.get('Cookie'), 'SID=test-session');
+    if (input.pathname === '/console/index.pl')
+      return new Response('<a href="/logout.pl">Logout</a>');
+    if (init.method === 'GET')
+      return new Response(
+        '<form method="post" action="/?abcde"><input type="hidden" name="token" value="A&amp;B" /><input type="submit" value="Download"></form>',
+      );
+    assert.equal(input.href, source.href);
+    assert.equal((init.body as URLSearchParams).get('did'), '1');
+    assert.equal((init.body as URLSearchParams).get('token'), 'A&B');
+    return new Response(null, { status: 302, headers: { Location: direct } });
+  });
+  assert.equal(await website.verify(account), 'connected');
+  assert.deepEqual(await website.direct(source, account), { link: direct });
+  assert.equal(fetch.mock.callCount(), 5);
+  await assert.rejects(
+    website.direct(new URL('https://1fichier.com.evil.test/?abcde'), account),
+    /enlace/,
+  );
+  assert.equal(fetch.mock.callCount(), 5);
+});
+
+test('1fichier web login recognizes a two-factor prompt', async (t) => {
+  const website = new FichierWebsite();
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async (_input: URL, init: RequestInit) =>
+      new Response(init.method === 'POST' ? '<form><input name="tfa"></form>' : '<form></form>'),
+  );
+  assert.equal(
+    await website.verify({
+      id: randomUUID(),
+      label: 'Web',
+      provider: '1fichier-web',
+      email: 'test@example.org',
+      secret: 'fixture',
+    }),
+    'two-factor',
+  );
 });
 
 test('checks new accounts and routes a mixed set of links independently', async (t) => {

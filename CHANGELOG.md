@@ -1,5 +1,9 @@
 # Cambios
 
+## 0.5.0
+
+- Añade el inicio de sesión web de 1fichier con correo y contraseña y selección automática de la cuenta para sus enlaces.
+
 ## 0.4.1
 
 - Distingue las credenciales rechazadas, los bloqueos de acceso y los límites de solicitudes de 1fichier.

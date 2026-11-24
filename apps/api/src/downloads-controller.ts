@@ -72,6 +72,12 @@ const token = z
   .optional();
 const account = z.discriminatedUnion('provider', [
   z.strictObject({ ...accountFields, provider: z.literal('1fichier'), secret: token }),
+  z.strictObject({
+    ...accountFields,
+    provider: z.literal('1fichier-web'),
+    email: z.email().max(254),
+    secret: z.string().min(1).max(128).optional(),
+  }),
   z.strictObject({ ...accountFields, provider: z.literal('real-debrid'), secret: token }),
   z.strictObject({ ...accountFields, provider: z.literal('terabox'), secret: token }),
   z.strictObject({ ...accountFields, provider: z.literal('katfile'), secret: token }),

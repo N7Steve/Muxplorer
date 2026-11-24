@@ -77,7 +77,8 @@ export class DownloadsView implements OnInit, OnDestroy {
   readonly destination = computed(() => this.override() ?? this.settings()?.destination);
   readonly accountDraft = signal<DownloadAccount | null>(null);
   readonly providers: Record<DownloadAccountProvider, string> = {
-    '1fichier': '1fichier',
+    '1fichier': '1fichier · Clave API',
+    '1fichier-web': '1fichier · Inicio de sesión web',
     mega: 'MEGA',
     'real-debrid': 'Real-Debrid',
     terabox: 'TeraBox',
@@ -92,6 +93,7 @@ export class DownloadsView implements OnInit, OnDestroy {
     invalid: 'Credenciales rechazadas',
     unavailable: 'Proveedor sin confirmar',
     captcha: 'CAPTCHA requerido',
+    'two-factor': 'Requiere verificación en dos pasos',
     restricted: 'El proveedor denegó el acceso a la API',
     'rate-limited': 'Demasiadas comprobaciones. Espera antes de volver a comprobar.',
   };
@@ -406,11 +408,12 @@ export class DownloadsView implements OnInit, OnDestroy {
   }
 
   usesEmail(provider: DownloadAccountProvider) {
-    return ['mega', 'rapidgator', 'nitroflare'].includes(provider);
+    return ['mega', 'rapidgator', 'nitroflare', '1fichier-web'].includes(provider);
   }
 
   secretLabel(provider: DownloadAccountProvider) {
-    if (provider === 'mega' || provider === 'rapidgator') return 'Contraseña';
+    if (provider === 'mega' || provider === 'rapidgator' || provider === '1fichier-web')
+      return 'Contraseña';
     if (provider === 'nitroflare') return 'Clave prémium';
     if (provider === 'terabox') return 'Token de acceso de Open Platform';
     return 'Clave API';
