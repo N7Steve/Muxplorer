@@ -82,6 +82,17 @@ export interface DownloadSettings {
   destination: Location;
   accounts: DownloadAccount[];
 }
+export interface DownloadCounts {
+  all: number;
+  active: number;
+  paused: number;
+  issues: number;
+  completed: number;
+  cancelled: number;
+  pausable: number;
+  resumable: number;
+  clearable: number;
+}
 export interface DownloadsPage {
   engine: DownloadEngine;
   tasks: Download[];
@@ -89,6 +100,12 @@ export interface DownloadsPage {
   total: number;
   active?: number;
   speed?: number;
+  counts?: DownloadCounts;
+}
+export interface DownloadBulkResult {
+  ok: number;
+  skipped: number;
+  failed: number;
 }
 export type DownloadAction = 'pause' | 'resume' | 'cancel' | 'remove' | 'publish';
 export interface Root {

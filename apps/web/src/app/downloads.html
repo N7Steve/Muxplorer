@@ -1,515 +1,1343 @@
-<header class="downloads-heading">
-  <h1>Descargas</h1>
-  <div class="download-toolbar">
+<header class="dl-header">
+  <div class="dl-title-block">
+    <div class="eyebrow">GESTOR DE DESCARGAS</div>
+    <h1>Descargas<span class="heading-dot">.</span></h1>
+  </div>
+  <div class="dl-header-actions">
     @if (snapshot(); as current) {
-    <span class="engine-state" [class.online]="available()">
-      <span class="status-dot" [class.warning]="!available()"></span>
+    <span
+      class="engine-pill"
+      [class.online]="available()"
+      [class.offline]="!available() && current.engine.status !== 'connecting'"
+      [title]="current.engine.message ?? 'Estado del motor de descargas'"
+    >
+      <span
+        class="status-dot"
+        [class.warning]="!available()"
+        [class.error-dot]="
+          current.engine.status === 'unavailable' || current.engine.status === 'misconfigured'
+        "
+      ></span>
       @switch (current.engine.status) { @case ('connected') { Gopeed {{ current.engine.version }} }
       @case ('disabled') { Gopeed desactivado } @case ('connecting') { Conectando con Gopeed… }
       @default { Gopeed desconectado } }
     </span>
-    }
-    <button
-      class="button compact secondary"
-      [attr.aria-expanded]="showSettings()"
-      (click)="toggleSettings()"
-    >
-      <mx-icon name="Settings2" [size]="16" />Ajustes
+    } @if (tab() !== 'capture') {
+    <button class="button primary compact" type="button" (click)="openTab('capture')">
+      <mx-icon name="Plus" [size]="15" />Añadir enlaces
     </button>
+    }
   </div>
 </header>
 
-@if (statusMessage(); as message) {
-<p class="downloads-message" role="status">{{ message }}</p>
-} @if (showSettings()) {
-<section class="download-settings" aria-label="Ajustes de descargas">
-  <h2>Ajustes de descargas</h2>
-  @if (settings(); as config) {
-  <div class="setting-row">
-    <div>
-      <strong>Carpeta predeterminada</strong>
-      <div class="download-path">{{ display(config.destination) }}</div>
-    </div>
-    <button class="button compact secondary" [disabled]="saving()" (click)="picker.set('default')">
-      <mx-icon name="FolderOpen" [size]="16" />Cambiar carpeta
-    </button>
-  </div>
-  <div class="setting-row">
-    <div>
-      <strong>Cuentas</strong>
-      <div class="download-path">El gestor elige una cuenta compatible para cada enlace.</div>
-    </div>
-    <button
-      class="button compact secondary"
-      [disabled]="saving()"
-      (click)="editAccount({ id: '', provider: '1fichier', label: '' })"
-    >
-      <mx-icon name="Plus" [size]="16" />Añadir cuenta
-    </button>
-  </div>
-  @if (config.accounts.length) {
-  <ul class="account-list" aria-label="Cuentas guardadas">
-    @for (account of config.accounts; track account.id) {
-    <li class="setting-row">
-      <div>
-        <strong>{{ account.label }}</strong>
-        <div class="download-path">
-          {{ providers[account.provider] }} @if (account.email) { · {{ account.email }} }
-        </div>
-        <div class="account-state" [class.online]="account.status === 'connected'" role="status">
-          <span class="status-dot" [class.warning]="account.status !== 'connected'"></span>
-          {{ accountStates[account.status ?? 'unchecked'] }} @if (account.checkedAt) {
-          <time [attr.datetime]="account.checkedAt"
-            >{{ account.checkedAt | date: 'dd/MM HH:mm' }}</time
-          >
-          }
-        </div>
-      </div>
-      <div class="download-toolbar">
-        <button
-          class="button compact ghost"
-          [disabled]="saving()"
-          (click)="checkAccount(account)"
-          [attr.aria-label]="'Comprobar cuenta ' + account.label"
-        >
-          Comprobar
-        </button>
-        <button
-          class="button compact ghost"
-          [disabled]="saving()"
-          (click)="editAccount(account)"
-          [attr.aria-label]="'Editar ' + account.label"
-        >
-          Editar
-        </button>
-        <button
-          class="button compact ghost danger-hover"
-          [disabled]="saving()"
-          (click)="removeAccount(account)"
-          [attr.aria-label]="'Eliminar cuenta ' + account.label"
-        >
-          Eliminar
-        </button>
-      </div>
-    </li>
-    }
-  </ul>
-  } @if (accountDraft(); as draft) {
-  <form class="account-form" (ngSubmit)="saveAccount(draft)">
-    <label
-      >Proveedor
-      <select name="provider" [(ngModel)]="draft.provider" [disabled]="!!draft.id || saving()">
-        @for (option of providerOptions; track option[0]) {
-        <option [value]="option[0]">{{ option[1] }}</option>
-        }
-      </select>
-    </label>
-    <label
-      >Nombre de la cuenta
-      <input name="label" [(ngModel)]="draft.label" required maxlength="80" [disabled]="saving()" />
-    </label>
-    @if (usesEmail(draft.provider)) {
-    <label
-      >Correo de {{ providers[draft.provider] }}
-      <input
-        name="email"
-        type="email"
-        autocomplete="off"
-        [(ngModel)]="draft.email"
-        required
-        maxlength="254"
-        [disabled]="saving()"
-      />
-    </label>
-    }
-    <label
-      >{{ secretLabel(draft.provider) }}
-      <input
-        name="secret"
-        type="password"
-        autocomplete="new-password"
-        [(ngModel)]="secret"
-        [required]="!draft.id"
-        [placeholder]="draft.id ? 'Dejar en blanco para conservarla' : ''"
-        maxlength="1024"
-        [disabled]="saving()"
-      />
-    </label>
-    @if (draft.provider === '1fichier') {
-    <p class="download-path">
-      1fichier autentica con la clave API. Puedes usar el correo como nombre para identificar la
-      cuenta.
-    </p>
-    }
-    <div class="download-toolbar">
-      <button
-        class="button compact primary"
-        type="submit"
-        [disabled]="saving() || !draft.label.trim() || (!draft.id && !secret)"
-      >
-        {{ saving() ? 'Comprobando…' : 'Guardar cuenta' }}
-      </button>
-      <button
-        class="button compact ghost"
-        type="button"
-        [disabled]="saving()"
-        (click)="editAccount(null)"
-      >
-        Cerrar formulario
-      </button>
-    </div>
-  </form>
-  } } @else if (saving()) {
-  <p class="downloads-message" role="status">Cargando ajustes…</p>
-  } @else {
-  <button class="button compact secondary" (click)="loadSettings()">
-    Volver a cargar los ajustes
-  </button>
-  } @if (settingsMessage()) {
-  <p class="downloads-message" role="status">{{ settingsMessage() }}</p>
-  }
-</section>
-} @if (settingsError()) {
-<p class="downloads-message failure" role="alert">{{ settingsError() }}</p>
-} @if (picker() === 'default' && settings(); as config) {
-<section class="download-picker picker-area" aria-label="Elegir carpeta predeterminada">
-  <mx-explorer
-    #defaultFolder
-    panelId="download-default"
-    [picker]="true"
-    [initialLocation]="config.destination"
-  />
-  <div class="download-toolbar">
-    <button
-      type="button"
-      class="button compact primary"
-      [disabled]="saving() || defaultFolder.loading() || !!defaultFolder.error()"
-      (click)="selectDestination(defaultFolder.location())"
-    >
-      Guardar como predeterminada
-    </button>
-    <button
-      type="button"
-      class="button compact ghost"
-      [disabled]="saving()"
-      (click)="picker.set(null)"
-    >
-      Cerrar selector
-    </button>
-  </div>
-</section>
-}
-
-<form class="download-form" (ngSubmit)="capture()">
-  <label for="download-links">Enlaces de descarga</label>
-  <textarea
-    id="download-links"
-    name="links"
-    rows="3"
-    placeholder="Pega enlaces directos, de alojamiento o magnet"
-    [(ngModel)]="input"
-    [disabled]="adding() || checking()"
-  ></textarea>
-  <div class="download-toolbar batch-options">
-    @if (destination(); as target) {
-    <div class="batch-destination">
-      <span class="download-path">{{ display(target) }}</span>
-      <div class="download-toolbar">
-        <button
-          type="button"
-          class="button compact secondary"
-          [disabled]="adding()"
-          (click)="picker.set(picker() === 'batch' ? null : 'batch')"
-        >
-          <mx-icon name="FolderOpen" [size]="16" />Elegir carpeta del lote
-        </button>
-        @if (override()) {
-        <button
-          type="button"
-          class="button compact ghost"
-          [disabled]="adding()"
-          (click)="override.set(undefined); picker.set(null)"
-        >
-          Usar predeterminada
-        </button>
-        }
-      </div>
-    </div>
-    }
-  </div>
+<nav class="dl-tabs" role="tablist" aria-label="Secciones de descargas">
   <button
-    class="button primary"
-    type="submit"
-    [disabled]="!available() || adding() || checking() || !input.trim()"
+    type="button"
+    role="tab"
+    class="dl-tab"
+    [class.selected]="tab() === 'queue'"
+    [attr.aria-selected]="tab() === 'queue'"
+    (click)="openTab('queue')"
+  >
+    <mx-icon name="Download" [size]="15" />
+    <span>Cola</span>
+    @if (counts().all) {
+    <span class="tab-badge" [class.active]="counts().active > 0"
+      >{{ counts().active || counts().all }}</span
+    >
+    }
+  </button>
+  <button
+    type="button"
+    role="tab"
+    class="dl-tab"
+    [class.selected]="tab() === 'capture'"
+    [attr.aria-selected]="tab() === 'capture'"
+    (click)="openTab('capture')"
   >
     <mx-icon
-      [name]="checking() ? 'LoaderCircle' : 'Plus'"
+      [name]="checking() ? 'LoaderCircle' : 'Link2'"
       [class.spinning]="checking()"
-      [size]="17"
+      [size]="15"
     />
-    Comprobar enlaces
+    <span>Capturador</span>
+    @if (captured().length) {
+    <span class="tab-badge active">{{ captured().length }}</span>
+    }
   </button>
-</form>
+  <button
+    type="button"
+    role="tab"
+    class="dl-tab"
+    [class.selected]="tab() === 'settings'"
+    [attr.aria-selected]="tab() === 'settings'"
+    (click)="openTab('settings')"
+  >
+    <mx-icon name="Settings2" [size]="15" />
+    <span>Ajustes</span>
+    @if (hasAccountIssues()) {
+    <span class="tab-dot" title="Hay cuentas que requieren atención"></span>
+    }
+  </button>
+</nav>
 
-@if (picker() === 'batch' && destination(); as target) {
-<section class="download-picker picker-area" aria-label="Elegir carpeta del lote">
-  <mx-explorer #batchFolder panelId="download-batch" [picker]="true" [initialLocation]="target" />
-  <div class="download-toolbar">
-    <button
-      type="button"
-      class="button compact primary"
-      [disabled]="adding() || batchFolder.loading() || !!batchFolder.error()"
-      (click)="selectDestination(batchFolder.location())"
-    >
-      Usar esta carpeta
-    </button>
-    <button type="button" class="button compact ghost" (click)="picker.set(null)">
-      Cerrar selector
-    </button>
-  </div>
-</section>
-} @if (captured().length) {
-<section class="capture-panel" aria-labelledby="captured-heading">
-  <div class="setting-row">
-    <div>
-      <h2 id="captured-heading">Enlaces capturados</h2>
-      <p class="download-path" role="status">
-        {{ checkedCount() }} de {{ captured().length }} comprobados · {{ onlineCount() }} en línea
-      </p>
+@if (statusMessage(); as message) {
+<div class="dl-banner warning" role="status">
+  <mx-icon name="AlertTriangle" [size]="17" />
+  <div class="dl-banner-text">{{ message }}</div>
+  <button type="button" class="button compact secondary" (click)="refresh()">
+    <mx-icon name="RefreshCw" [size]="14" />Reintentar
+  </button>
+</div>
+} @if (error()) {
+<div class="dl-banner danger" role="alert">
+  <mx-icon name="AlertCircle" [size]="17" />
+  <div class="dl-banner-text">{{ error() }}</div>
+  <button type="button" class="icon-button" aria-label="Cerrar error" (click)="error.set('')">
+    <mx-icon name="X" [size]="15" />
+  </button>
+</div>
+}
+
+<!-- ===================== TAB 1: COLA ===================== -->
+@if (tab() === 'queue') {
+<section class="dl-panel-view" aria-label="Cola de descargas">
+  @if (snapshot(); as current) { @if (counts().all > 0) {
+  <div class="dl-stats-bar">
+    <div class="dl-stats">
+      <div class="stat-chip" [class.highlight]="(current.active ?? 0) > 0">
+        <span class="stat-label">En curso</span>
+        <strong>{{ current.active ?? 0 }}</strong>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Velocidad</span>
+        <strong class="tabular">{{ current.speed ? bytes(current.speed) + '/s' : '0 B/s' }}</strong>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Completadas</span>
+        <strong class="ok-text">{{ counts().completed }}</strong>
+      </div>
+      @if (counts().issues > 0) {
+      <button
+        type="button"
+        class="stat-chip stat-button err"
+        (click)="setFilter('issues')"
+        title="Ver descargas con errores"
+      >
+        <span class="stat-label">Errores</span>
+        <strong>{{ counts().issues }}</strong>
+      </button>
+      }
     </div>
-    <div class="download-toolbar">
+    <div class="dl-bulk-actions">
+      @if (counts().pausable > 0) {
       <button
         type="button"
         class="button compact secondary"
-        [disabled]="checking() || adding() || !available() || onlineCount() === captured().length"
-        (click)="recheck()"
+        [disabled]="bulkBusy() || !available()"
+        (click)="bulkAll('pause')"
       >
-        Volver a comprobar pendientes
+        <mx-icon name="Pause" [size]="14" />Pausar todo
       </button>
+      } @if (counts().resumable > 0) {
+      <button
+        type="button"
+        class="button compact secondary"
+        [disabled]="bulkBusy() || !available()"
+        (click)="bulkAll('resume')"
+      >
+        <mx-icon name="Play" [size]="14" />Reanudar todo
+      </button>
+      } @if (counts().clearable > 0) {
       <button
         type="button"
         class="button compact ghost"
-        [disabled]="checking() || adding()"
-        (click)="captured.set([])"
+        [disabled]="bulkBusy()"
+        (click)="bulkAll('clear-finished')"
       >
-        Limpiar lista
+        <mx-icon name="Eraser" [size]="14" />Limpiar finalizadas
       </button>
+      }
     </div>
   </div>
-  <ul class="download-list" aria-label="Resultados de la comprobación">
-    @for (group of captureGroups(); track group.id) {
+  }
+
+  <div class="dl-controls">
+    <div class="filter-pills" role="group" aria-label="Filtrar por estado">
+      @for (item of queueFilters; track item.id) {
+      <button
+        type="button"
+        class="filter-pill"
+        [class.selected]="filter() === item.id"
+        [class.has-issues]="item.id === 'issues' && filterCount('issues') > 0"
+        (click)="setFilter(item.id)"
+      >
+        <span>{{ item.label }}</span>
+        @if (filterCount(item.id) > 0 || item.id === 'all') {
+        <span class="pill-count">{{ filterCount(item.id) }}</span>
+        }
+      </button>
+      }
+    </div>
+    <label class="search dl-search">
+      <mx-icon name="Search" [size]="14" />
+      <input
+        type="search"
+        maxlength="240"
+        aria-label="Buscar descargas"
+        placeholder="Buscar por nombre…"
+        [ngModel]="query()"
+        (ngModelChange)="onSearchInput($event)"
+      />
+      @if (query()) {
+      <button
+        type="button"
+        class="icon-button tiny-icon"
+        aria-label="Limpiar búsqueda"
+        (click)="clearSearch()"
+      >
+        <mx-icon name="X" [size]="13" />
+      </button>
+      }
+    </label>
+  </div>
+
+  @if (downloadGroups().length) {
+  <ul class="dl-list" aria-label="Descargas">
+    @for (group of downloadGroups(); track group.id) {
     <li>
-      @if (group.expected) {
-      <details class="package-item">
-        <summary>
-          <strong>{{ group.name }}</strong>
-          <span>{{ group.expected - group.missing }} de {{ group.expected }} partes en línea</span>
-          @if (group.missing) { <span class="failure">Paquete incompleto</span> }
-        </summary>
-        <ul class="download-list package-parts">
-          @for (item of group.links; track item.id) {
-          <li><ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: item }" /></li>
+      @if (group.expected) { @let gStatus = groupStatus(group); @let gProgress =
+      groupProgress(group.tasks); @let gSpeed = groupSpeed(group.tasks); @let gTotal =
+      groupTotal(group.tasks); @let gExpanded = expandedPackages().has(group.id);
+      <article class="dl-card dl-package" [class.has-error]="statusTone(gStatus) === 'err'">
+        <div class="dl-package-head">
+          <button
+            type="button"
+            class="dl-package-toggle"
+            [attr.aria-expanded]="gExpanded"
+            (click)="togglePackage(group.id)"
+          >
+            <span class="dl-file-icon archive">
+              <mx-icon name="Package" [size]="18" />
+            </span>
+            <div class="dl-title-col">
+              <div class="dl-title-row">
+                <strong [title]="group.name">{{ group.name }}</strong>
+                <span class="dl-badge" [class]="statusTone(gStatus)">
+                  {{ downloadState(gStatus) }}
+                </span>
+                @if (group.missing) {
+                <span class="dl-badge err">
+                  Paquete incompleto · {{ group.missing }} pendientes
+                </span>
+                }
+              </div>
+              <div class="dl-submeta">
+                <span>{{ group.tasks.length }} partes en la cola</span>
+                <span>·</span>
+                <span>{{ groupCompletedCount(group) }}/{{ group.expected }} completadas</span>
+                @if (group.tasks[0]?.destination; as target) {
+                <span>·</span>
+                <span class="dl-dest-inline">
+                  <mx-icon name="Folder" [size]="12" />{{ display(target) }}
+                </span>
+                }
+              </div>
+            </div>
+            <mx-icon
+              class="dl-chevron"
+              [class.rotated]="gExpanded"
+              name="ChevronDown"
+              [size]="16"
+            />
+          </button>
+        </div>
+
+        <div class="dl-progress-wrap">
+          <div
+            class="dl-progress"
+            role="progressbar"
+            [attr.aria-label]="'Progreso de ' + group.name"
+            [attr.aria-valuenow]="gProgress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span
+              [class]="statusTone(gStatus)"
+              [class.indeterminate]="gProgress === null && (gStatus === 'running' || gStatus === 'publishing')"
+              [style.width.%]="gProgress ?? (gStatus === 'running' ? 30 : 0)"
+            ></span>
+          </div>
+        </div>
+
+        <div class="dl-metrics-row">
+          <div class="dl-metrics tabular">
+            <span>
+              {{ bytes(groupDownloaded(group.tasks)) }} / {{ gTotal ? bytes(gTotal) : '—' }}
+            </span>
+            @if (gProgress !== null) {
+            <span class="metric-strong">{{ gProgress }} %</span>
+            } @if (gSpeed) {
+            <span class="metric-speed">{{ bytes(gSpeed) }}/s</span>
+            } @if (groupEta(group.tasks); as remaining) {
+            <span>Restan {{ remaining }}</span>
+            }
+          </div>
+          <div class="dl-card-actions">
+            @if (groupFirstCompleted(group); as completedTask) {
+            <button
+              type="button"
+              class="button compact secondary"
+              [disabled]="busy().has(completedTask.id)"
+              (click)="open(completedTask)"
+            >
+              <mx-icon name="FolderOpen" [size]="14" />Abrir carpeta
+            </button>
+            } @for (action of groupActions(group); track action) {
+            <button
+              type="button"
+              class="button compact ghost"
+              [class.danger-hover]="action === 'cancel' || action === 'remove'"
+              [disabled]="bulkBusy()"
+              (click)="groupAction(group, action)"
+            >
+              <mx-icon [name]="actionIcon(action)" [size]="14" />{{ actionLabel(action) }}
+            </button>
+            }
+          </div>
+        </div>
+
+        @if (gExpanded) {
+        <ul class="dl-parts-list" [attr.aria-label]="'Partes de ' + group.name">
+          @for (task of group.tasks; track task.id) {
+          <li>
+            <ng-container *ngTemplateOutlet="taskRow; context: { $implicit: task, nested: true }" />
+          </li>
           }
         </ul>
-      </details>
+        }
+      </article>
       } @else {
-      <ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: group.links[0] }" />
+      <ng-container
+        *ngTemplateOutlet="taskRow; context: { $implicit: group.tasks[0], nested: false }"
+      />
       }
     </li>
     }
   </ul>
-  <div class="download-toolbar">
+
+  @if (pages() > 1) {
+  <nav class="dl-pagination" aria-label="Páginas de descargas">
     <button
       type="button"
-      class="button compact ghost"
-      [disabled]="adding() || checking() || !onlineCount()"
-      (click)="selectOnline(selectionCount() !== onlineCount())"
+      class="button compact secondary"
+      [disabled]="page() === 0"
+      (click)="showPage(page() - 1)"
     >
-      {{ selectionCount() === onlineCount() && onlineCount() ? 'Quitar selección' : 'Seleccionar
-      todos en línea' }}
+      <mx-icon name="ArrowLeft" [size]="14" />Anterior
     </button>
+    <span class="tabular">Página {{ page() + 1 }} de {{ pages() }}</span>
     <button
       type="button"
-      class="button primary"
-      [disabled]="adding() || checking() || !available() || !selectionCount()"
-      (click)="add()"
+      class="button compact secondary"
+      [disabled]="page() + 1 >= pages()"
+      (click)="showPage(page() + 1)"
     >
-      <mx-icon
-        [name]="adding() ? 'LoaderCircle' : 'Plus'"
-        [class.spinning]="adding()"
-        [size]="17"
-      />
-      {{ adding() ? 'Añadiendo…' : 'Añadir seleccionados a descargas' }} @if (selectionCount()) {
-      ({{ selectionCount() }}) }
+      Siguiente<mx-icon name="ArrowRight" [size]="14" />
     </button>
+  </nav>
+  } } @else {
+  <div class="state-box dl-empty">
+    <div class="empty-icon">
+      <mx-icon [name]="filter() !== 'all' || query().trim() ? 'Search' : 'Download'" [size]="28" />
+    </div>
+    @if (filter() !== 'all' || query().trim()) {
+    <h3>Ninguna descarga coincide con el filtro</h3>
+    <p>Prueba cambiando el estado seleccionado o limpiando el término de búsqueda.</p>
+    <button type="button" class="button secondary compact" (click)="resetQueueFilters()">
+      Limpiar filtros
+    </button>
+    } @else {
+    <h3>Sin descargas todavía</h3>
+    <p>
+      Pega enlaces directos, de alojamientos compatibles o enlaces magnet desde el capturador para
+      empezar.
+    </p>
+    <button type="button" class="button primary compact" (click)="openTab('capture')">
+      <mx-icon name="Plus" [size]="15" />Añadir enlaces
+    </button>
+    }
   </div>
+  } } @else if (!loadingError()) {
+  <div class="state-box dl-empty" role="status">
+    <mx-icon name="LoaderCircle" class="spinning" [size]="26" />
+    <span>Cargando descargas…</span>
+  </div>
+  }
 </section>
 }
+
+<!-- ===================== TAB 2: CAPTURADOR ===================== -->
+@if (tab() === 'capture') {
+<section class="dl-panel-view" aria-label="Capturador de enlaces">
+  <form class="dl-card dl-capture-form" (ngSubmit)="capture()">
+    <div class="dl-card-header">
+      <div>
+        <label class="dl-field-title" for="download-links">Enlaces de descarga</label>
+        <p class="dl-card-sub">
+          Pega uno o varios enlaces (HTTP/HTTPS, servidores compatibles o magnet). También puedes
+          pegar texto mezclado o soltar un archivo .txt.
+        </p>
+      </div>
+      <div class="dl-inline-tools">
+        <button
+          type="button"
+          class="button compact ghost"
+          [disabled]="adding() || checking()"
+          (click)="pasteClipboard()"
+        >
+          <mx-icon name="ClipboardPaste" [size]="14" />Pegar
+        </button>
+        <label class="button compact ghost file-import-btn">
+          <mx-icon name="Upload" [size]="14" />Importar .txt
+          <input
+            type="file"
+            accept=".txt,text/plain"
+            [disabled]="adding() || checking()"
+            (change)="onImportFile($event)"
+          />
+        </label>
+      </div>
+    </div>
+
+    <div
+      class="dl-textarea-wrap"
+      [class.drag-over]="dragActive()"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave()"
+      (drop)="onDropFile($event)"
+    >
+      <textarea
+        id="download-links"
+        name="links"
+        rows="4"
+        placeholder="https://1fichier.com/?...&#10;https://mega.nz/file/...#clave&#10;magnet:?xt=urn:btih:..."
+        [ngModel]="inputText()"
+        (ngModelChange)="inputText.set($event)"
+        [disabled]="adding() || checking()"
+      ></textarea>
+      @if (inputText().trim()) {
+      <div class="textarea-meta">
+        <span>
+          @if (detectedInputCount()) { {{ detectedInputCount() }} {{ detectedInputCount() === 1 ?
+          'enlace detectado' : 'enlaces detectados' }} } @else { Sin enlaces HTTP/HTTPS o magnet
+          detectados aún }
+        </span>
+        <button
+          type="button"
+          class="link-btn"
+          [disabled]="adding() || checking()"
+          (click)="inputText.set('')"
+        >
+          Limpiar texto
+        </button>
+      </div>
+      }
+    </div>
+
+    @if (captureNotice()) {
+    <p class="dl-notice" role="status"><mx-icon name="Info" [size]="14" />{{ captureNotice() }}</p>
+    }
+
+    <div class="dl-batch-grid">
+      @if (destination(); as target) {
+      <div class="dl-batch-field">
+        <div class="dl-batch-label">
+          <span>Carpeta del lote</span>
+          <span class="mini-tag" [class.custom]="!!override()">
+            {{ override() ? 'Personalizada' : 'Predeterminada' }}
+          </span>
+        </div>
+        <div class="dl-dest-row">
+          <button
+            type="button"
+            class="destination-card dl-dest-card"
+            [attr.aria-label]="'Elegir carpeta del lote: ' + display(target)"
+            [disabled]="adding()"
+            (click)="picker.set('batch')"
+          >
+            <mx-icon name="FolderOpen" [size]="18" />
+            <span>{{ display(target) }}</span>
+            <b>Cambiar</b>
+            <mx-icon name="ChevronRight" [size]="15" />
+          </button>
+          @if (override()) {
+          <button
+            type="button"
+            class="button compact ghost"
+            [disabled]="adding()"
+            (click)="override.set(undefined)"
+          >
+            Usar predeterminada
+          </button>
+          }
+        </div>
+      </div>
+      }
+
+      <div class="dl-batch-field">
+        <div class="dl-batch-label">
+          <label for="batch-account">Cuenta para este lote</label>
+          <span class="mini-tag">Opcional</span>
+        </div>
+        @if (settings()?.accounts?.length) {
+        <select
+          id="batch-account"
+          class="dl-select"
+          [ngModel]="batchAccountId()"
+          (ngModelChange)="batchAccountId.set($event)"
+          name="batchAccount"
+          [disabled]="adding() || checking()"
+        >
+          <option value="">Automática (elegir según el enlace)</option>
+          @for (account of settings()!.accounts; track account.id) {
+          <option [value]="account.id">
+            {{ account.label }} · {{ providerName(account.provider) }} ({{
+            accountStates[account.status ?? 'unchecked'] }})
+          </option>
+          }
+        </select>
+        } @else {
+        <button type="button" class="dl-empty-account-hint" (click)="openTab('settings')">
+          <mx-icon name="KeyRound" [size]="15" />
+          <span>Sin cuentas guardadas · Añade cuentas prémium en Ajustes</span>
+          <mx-icon name="ChevronRight" [size]="14" />
+        </button>
+        }
+      </div>
+    </div>
+
+    <div class="dl-form-footer">
+      <button
+        class="button primary"
+        type="submit"
+        [disabled]="!available() || adding() || checking() || !inputText().trim()"
+      >
+        <mx-icon
+          [name]="checking() ? 'LoaderCircle' : 'Search'"
+          [class.spinning]="checking()"
+          [size]="16"
+        />
+        {{ checking() ? 'Comprobando enlaces…' : 'Comprobar enlaces' }}
+      </button>
+      @if (checking()) {
+      <button type="button" class="button secondary" (click)="cancelCheck()">
+        <mx-icon name="X" [size]="15" />Detener comprobación
+      </button>
+      }
+      <span class="dl-form-tip">
+        Se verificará disponibilidad y se agruparán automáticamente archivos multiparte.
+      </span>
+    </div>
+  </form>
+
+  @if (captured().length) {
+  <section class="dl-card dl-captured" aria-labelledby="captured-heading">
+    <div class="dl-captured-head">
+      <div>
+        <h2 id="captured-heading">Enlaces capturados</h2>
+        <p class="dl-card-sub" role="status">
+          {{ checkedCount() }} de {{ captured().length }} comprobados · {{ onlineCount() }} en línea
+          @if (selectedBytes()) { · {{ bytes(selectedBytes()) }} seleccionados }
+        </p>
+      </div>
+      <div class="dl-inline-tools">
+        @if (issueCaptureCount() > 0) {
+        <button
+          type="button"
+          class="button compact ghost"
+          [disabled]="checking() || adding()"
+          (click)="removeUnavailableCaptured()"
+        >
+          <mx-icon name="Eraser" [size]="14" />Quitar no disponibles
+        </button>
+        }
+        <button
+          type="button"
+          class="button compact secondary"
+          [disabled]="checking() || adding() || !available() || onlineCount() === captured().length"
+          (click)="recheck()"
+        >
+          <mx-icon name="RefreshCw" [size]="14" />Volver a comprobar pendientes
+        </button>
+        <button
+          type="button"
+          class="button compact ghost danger-hover"
+          [disabled]="adding()"
+          (click)="clearCaptured()"
+        >
+          Limpiar lista
+        </button>
+      </div>
+    </div>
+
+    @if (checking()) {
+    <div class="dl-progress check-progress" aria-hidden="true">
+      <span class="active" [style.width.%]="captureProgress()"></span>
+    </div>
+    } @if (onlineCount() > 0 && issueCaptureCount() > 0) {
+    <div class="filter-pills compact-pills" role="group" aria-label="Filtrar enlaces capturados">
+      <button
+        type="button"
+        class="filter-pill"
+        [class.selected]="captureFilter() === 'all'"
+        (click)="captureFilter.set('all')"
+      >
+        Todos <span class="pill-count">{{ captured().length }}</span>
+      </button>
+      <button
+        type="button"
+        class="filter-pill"
+        [class.selected]="captureFilter() === 'online'"
+        (click)="captureFilter.set('online')"
+      >
+        En línea <span class="pill-count">{{ onlineCount() }}</span>
+      </button>
+      <button
+        type="button"
+        class="filter-pill has-issues"
+        [class.selected]="captureFilter() === 'issues'"
+        (click)="captureFilter.set('issues')"
+      >
+        Con problemas <span class="pill-count">{{ issueCaptureCount() }}</span>
+      </button>
+    </div>
+    }
+
+    <ul class="dl-list dl-capture-list" aria-label="Resultados de la comprobación">
+      @for (group of filteredCaptureGroups(); track group.id) {
+      <li>
+        @if (group.expected) {
+        <details class="dl-capture-package" [open]="group.links.length <= 6">
+          <summary>
+            <input
+              type="checkbox"
+              [checked]="group.online > 0 && group.selected === group.online"
+              [indeterminate]="group.selected > 0 && group.selected < group.online"
+              [disabled]="!group.online || adding() || checking()"
+              [attr.aria-label]="'Seleccionar paquete ' + group.name"
+              (click)="$event.stopPropagation()"
+              (change)="selectGroup(group, $any($event.target).checked)"
+            />
+            <mx-icon name="Package" [size]="16" class="pkg-icon" />
+            <strong class="pkg-name">{{ group.name }}</strong>
+            <span class="host-pill">{{ group.host }}</span>
+            <span class="pkg-count">
+              {{ group.expected - group.missing }} de {{ group.expected }} partes en línea
+            </span>
+            @if (group.total) {
+            <span class="tabular muted-text">{{ bytes(group.total) }}</span>
+            } @if (group.missing) {
+            <span class="dl-badge err">Paquete incompleto</span>
+            }
+          </summary>
+          <ul class="dl-list package-parts">
+            @for (item of group.links; track item.id) {
+            <li>
+              <ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: item }" />
+            </li>
+            }
+          </ul>
+        </details>
+        } @else {
+        <ng-container *ngTemplateOutlet="capturedRow; context: { $implicit: group.links[0] }" />
+        }
+      </li>
+      }
+    </ul>
+
+    <div class="dl-captured-footer">
+      <button
+        type="button"
+        class="button compact ghost"
+        [disabled]="adding() || checking() || !onlineCount()"
+        (click)="selectOnline(selectionCount() !== onlineCount())"
+      >
+        {{ selectionCount() === onlineCount() && onlineCount() ? 'Quitar selección' : 'Seleccionar
+        todos en línea' }}
+      </button>
+      <div class="dl-captured-cta">
+        @if (selectedBytes()) {
+        <span class="tabular muted-text">{{ bytes(selectedBytes()) }}</span>
+        }
+        <button
+          type="button"
+          class="button primary"
+          [disabled]="adding() || checking() || !available() || !selectionCount()"
+          (click)="add()"
+        >
+          <mx-icon
+            [name]="adding() ? 'LoaderCircle' : 'Download'"
+            [class.spinning]="adding()"
+            [size]="16"
+          />
+          {{ adding() ? 'Añadiendo…' : 'Añadir seleccionados a descargas' }} @if (selectionCount())
+          { ({{ selectionCount() }}) }
+        </button>
+      </div>
+    </div>
+  </section>
+  }
+</section>
+}
+
+<!-- ===================== TAB 3: AJUSTES ===================== -->
+@if (tab() === 'settings') {
+<section class="dl-panel-view dl-settings-view" aria-label="Ajustes de descargas">
+  @if (settingsError()) {
+  <div class="dl-banner danger" role="alert">
+    <mx-icon name="AlertCircle" [size]="17" />
+    <div class="dl-banner-text">{{ settingsError() }}</div>
+  </div>
+  } @if (settingsMessage()) {
+  <div class="dl-banner success" role="status">
+    <mx-icon name="Check" [size]="17" />
+    <div class="dl-banner-text">{{ settingsMessage() }}</div>
+  </div>
+  } @if (settings(); as config) {
+  <!-- Card 1: Carpeta predeterminada -->
+  <article class="dl-card dl-settings-card">
+    <div class="dl-card-header">
+      <div>
+        <div class="eyebrow">DESTINO</div>
+        <h2>Carpeta predeterminada</h2>
+        <p class="dl-card-sub">
+          Todas las descargas nuevas se publicarán en esta ubicación salvo que elijas otra carpeta
+          para un lote concreto.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="button compact secondary"
+        [disabled]="saving()"
+        (click)="picker.set('default')"
+      >
+        <mx-icon name="FolderOpen" [size]="15" />Cambiar carpeta
+      </button>
+    </div>
+    <div class="dl-default-path-box">
+      <span class="dl-file-icon generic">
+        <mx-icon
+          [name]="config.destination.root === 'downloads' ? 'Download' : 'HardDrive'"
+          [size]="18"
+        />
+      </span>
+      <div class="dl-title-col">
+        <strong>{{ display(config.destination) }}</strong>
+        <span class="dl-card-sub">
+          Raíz: {{ config.destination.root === 'downloads' ? 'Downloads' : 'PlexMedia' }} @if
+          (defaultRootFree() !== null) { · {{ bytes(defaultRootFree()!) }} disponibles }
+        </span>
+      </div>
+    </div>
+  </article>
+
+  <!-- Card 2: Cuentas -->
+  <article class="dl-card dl-settings-card">
+    <div class="dl-card-header">
+      <div>
+        <div class="eyebrow">ALOJAMIENTOS Y DEBRID</div>
+        <h2>Cuentas guardadas</h2>
+        <p class="dl-card-sub">
+          El gestor elige automáticamente una cuenta compatible y conectada para cada enlace. Las
+          credenciales se guardan cifradas en el servidor.
+        </p>
+      </div>
+      <div class="dl-inline-tools">
+        @if (config.accounts.length > 1) {
+        <button
+          type="button"
+          class="button compact ghost"
+          [disabled]="saving() || checkingAccounts().size > 0"
+          (click)="checkAllAccounts()"
+        >
+          <mx-icon
+            [name]="checkingAccounts().size > 0 ? 'LoaderCircle' : 'RefreshCw'"
+            [class.spinning]="checkingAccounts().size > 0"
+            [size]="14"
+          />Comprobar todas
+        </button>
+        }
+        <button
+          type="button"
+          class="button compact primary"
+          [disabled]="saving()"
+          (click)="editAccount({ id: '', provider: '1fichier', label: '' })"
+        >
+          <mx-icon name="Plus" [size]="15" />Añadir cuenta
+        </button>
+      </div>
+    </div>
+
+    @if (config.accounts.length) {
+    <ul class="dl-account-list" aria-label="Cuentas guardadas">
+      @for (account of config.accounts; track account.id) { @let isChecking =
+      checkingAccounts().has(account.id); @let tone = accountStatusTone(account.status);
+      <li class="dl-account-row">
+        <span class="provider-badge">{{ providerShort(account.provider) }}</span>
+        <div class="dl-account-info">
+          <div class="dl-title-row">
+            <strong>{{ account.label }}</strong>
+            <span class="dl-badge" [class]="tone" role="status">
+              {{ isChecking ? 'Comprobando…' : accountStates[account.status ?? 'unchecked'] }}
+            </span>
+          </div>
+          <div class="dl-submeta">
+            <span>{{ providerName(account.provider) }}</span>
+            @if (account.email) {
+            <span>·</span>
+            <span>{{ account.email }}</span>
+            } @if (account.checkedAt) {
+            <span>·</span>
+            <time [attr.datetime]="account.checkedAt">
+              Comprobada {{ account.checkedAt | date: 'dd/MM HH:mm' }}
+            </time>
+            }
+          </div>
+        </div>
+        <div class="dl-card-actions">
+          <button
+            type="button"
+            class="button compact ghost"
+            [disabled]="saving() || isChecking"
+            (click)="checkAccount(account)"
+            [attr.aria-label]="'Comprobar cuenta ' + account.label"
+          >
+            <mx-icon
+              [name]="isChecking ? 'LoaderCircle' : 'RefreshCw'"
+              [class.spinning]="isChecking"
+              [size]="14"
+            />Comprobar
+          </button>
+          <button
+            type="button"
+            class="button compact ghost"
+            [disabled]="saving()"
+            (click)="editAccount(account)"
+            [attr.aria-label]="'Editar ' + account.label"
+          >
+            <mx-icon name="Pencil" [size]="14" />Editar
+          </button>
+          <button
+            type="button"
+            class="button compact ghost danger-hover"
+            [disabled]="saving()"
+            (click)="removeAccount(account)"
+            [attr.aria-label]="'Eliminar cuenta ' + account.label"
+          >
+            <mx-icon name="Trash2" [size]="14" />Eliminar
+          </button>
+        </div>
+      </li>
+      }
+    </ul>
+    } @else {
+    <div class="dl-accounts-empty">
+      <mx-icon name="KeyRound" [size]="24" />
+      <div>
+        <strong>Sin cuentas configuradas</strong>
+        <p>
+          Añade cuentas de 1fichier, MEGA, Real-Debrid, Rapidgator, Nitroflare, KatFile o TeraBox
+          para resolver enlaces protegidos automáticamente.
+        </p>
+      </div>
+    </div>
+    }
+  </article>
+
+  <!-- Card 3: Motor Gopeed -->
+  <article class="dl-card dl-settings-card">
+    <div class="dl-card-header">
+      <div>
+        <div class="eyebrow">MOTOR DEL SERVIDOR</div>
+        <h2>Estado de Gopeed</h2>
+        <p class="dl-card-sub">
+          Las descargas se realizan en un área temporal aislada y se publican de forma atómica al
+          completarse.
+        </p>
+      </div>
+      <button type="button" class="button compact secondary" (click)="refresh()">
+        <mx-icon name="RefreshCw" [size]="14" />Comprobar conexión
+      </button>
+    </div>
+    @if (snapshot(); as current) {
+    <div class="dl-engine-box">
+      <span class="dl-file-icon" [class.ok-icon]="available()">
+        <mx-icon name="Server" [size]="18" />
+      </span>
+      <div class="dl-title-col">
+        <div class="dl-title-row">
+          <strong>Gopeed {{ current.engine.version || '' }}</strong>
+          <span class="dl-badge" [class]="available() ? 'ok' : 'err'">
+            @switch (current.engine.status) { @case ('connected') { Conectado } @case ('disabled') {
+            Desactivado } @case ('connecting') { Conectando } @default { Desconectado } }
+          </span>
+        </div>
+        <span class="dl-card-sub">
+          {{ current.engine.message || 'Motor conectado y sincronizado con Muxplorer.' }}
+        </span>
+      </div>
+    </div>
+    }
+    <div class="dl-capabilities">
+      <span><mx-icon name="Globe" [size]="13" />HTTP / HTTPS</span>
+      <span><mx-icon name="Layers" [size]="13" />Magnet / BitTorrent</span>
+      <span><mx-icon name="ShieldCheck" [size]="13" />MEGA nativo cifrado</span>
+      <span><mx-icon name="Package" [size]="13" />Agrupación multiparte</span>
+    </div>
+  </article>
+  } @else if (saving()) {
+  <div class="state-box dl-empty" role="status">
+    <mx-icon name="LoaderCircle" class="spinning" [size]="24" />
+    <span>Cargando ajustes…</span>
+  </div>
+  } @else {
+  <div class="state-box dl-empty">
+    <h3>No se pudieron cargar los ajustes</h3>
+    <button type="button" class="button compact secondary" (click)="loadSettings()">
+      Volver a cargar los ajustes
+    </button>
+  </div>
+  }
+</section>
+}
+
+<!-- ===================== TEMPLATE: CAPTURED LINK ROW ===================== -->
 <ng-template #capturedRow let-item>
-  <div class="capture-row">
-    <label>
+  @let tone = linkStatusTone(item.check?.status);
+  <div class="dl-capture-row" [class.is-offline]="tone === 'err'">
+    <label class="capture-main">
       <input
         type="checkbox"
         [checked]="item.selected"
         [disabled]="item.check?.status !== 'online' || adding() || checking()"
         (change)="selectLink(item.id, $any($event.target).checked)"
       />
-      <span [title]="item.url">{{ item.check?.name || item.url }}</span>
+      <div class="capture-text">
+        <span class="capture-name" [title]="item.url">{{ item.check?.name || item.url }}</span>
+        @if (item.check?.message) {
+        <span class="capture-msg">{{ item.check.message }}</span>
+        }
+      </div>
     </label>
-    <span [class.online]="item.check?.status === 'online'">
-      {{ linkState(item.check?.status) }}
-    </span>
-    @if (item.check?.total) { <span>{{ bytes(item.check.total) }}</span> } @if (item.check?.message)
-    { <span class="download-path">{{ item.check.message }}</span> } @if (item.check?.status ===
-    'captcha' || item.check?.status === 'account-required') {
-    <a class="button compact ghost" [href]="item.url" target="_blank" rel="noopener noreferrer"
-      >Abrir enlace</a
-    >
-    }
-    <button
-      type="button"
-      class="button compact ghost"
-      [disabled]="adding() || checking()"
-      (click)="removeCaptured(item.id)"
-    >
-      Quitar
-    </button>
+    <div class="capture-meta">
+      <span class="host-pill">{{ item.host }}</span>
+      @if (item.check?.total) {
+      <span class="tabular muted-text">{{ bytes(item.check.total) }}</span>
+      }
+      <span class="dl-badge" [class]="tone">{{ linkState(item.check?.status) }}</span>
+      @if (item.check?.status === 'captcha' || item.check?.status === 'account-required') {
+      <a class="button compact ghost" [href]="item.url" target="_blank" rel="noopener noreferrer">
+        <mx-icon name="ExternalLink" [size]="13" />Abrir enlace
+      </a>
+      }
+      <button
+        type="button"
+        class="icon-button"
+        [disabled]="adding() || checking()"
+        [attr.aria-label]="'Quitar ' + (item.check?.name || item.url)"
+        title="Quitar"
+        (click)="removeCaptured(item.id)"
+      >
+        <mx-icon name="X" [size]="15" />
+      </button>
+    </div>
   </div>
 </ng-template>
 
-@if (error()) {
-<p class="downloads-message failure" role="alert">{{ error() }}</p>
-} @if (snapshot(); as current) {
-<div class="download-toolbar download-filters">
-  <label
-    >Buscar descargas
-    <input
-      type="search"
-      maxlength="240"
-      [ngModel]="query"
-      (ngModelChange)="query = $event; showPage(0)"
-    />
-  </label>
-  <label
-    >Estado
-    <select [ngModel]="filter" (ngModelChange)="filter = $event; showPage(0)">
-      <option value="all">Todas</option>
-      <option value="active">En curso</option>
-      <option value="paused">En pausa</option>
-      <option value="issues">Con errores</option>
-      <option value="completed">Completadas</option>
-      <option value="cancelled">Canceladas</option>
-    </select>
-  </label>
-  @if (current.active) {
-  <span class="download-path"
-    >{{ current.active }} en curso @if (current.speed) { · {{ bytes(current.speed) }}/s }</span
-  >
-  }
-</div>
-@if (downloadGroups().length) {
-<ul class="download-list" aria-label="Descargas">
-  @for (group of downloadGroups(); track group.id) {
-  <li>
-    @if (group.expected) {
-    <details class="package-item">
-      <summary>
-        <strong>{{ group.name }}</strong>
-        <span>{{ group.tasks.length }} partes en la cola</span>
-        @if (groupProgress(group.tasks); as progress) { <span>{{ progress }} %</span> } @if
-        (group.missing) {
-        <span class="failure">Paquete incompleto · {{ group.missing }} pendientes</span> }
-      </summary>
-      <ul class="download-list package-parts">
-        @for (task of group.tasks; track task.id) {
-        <li><ng-container *ngTemplateOutlet="taskRow; context: { $implicit: task }" /></li>
+<!-- ===================== TEMPLATE: TASK ROW ===================== -->
+<ng-template #taskRow let-task let-nested="nested">
+  @let progress = percent(task); @let tone = statusTone(task.status);
+  <article class="dl-card dl-task" [class.nested]="nested" [class.has-error]="tone === 'err'">
+    <div class="dl-task-top">
+      @if (!nested) {
+      <span class="dl-file-icon" [class]="fileIconKind(task.name)">
+        <mx-icon [name]="fileIcon(task.name)" [size]="18" />
+      </span>
+      }
+      <div class="dl-title-col">
+        <div class="dl-title-row">
+          <strong [title]="task.name">{{ task.name }}</strong>
+          <span class="dl-badge" [class]="tone">{{ downloadState(task.status) }}</span>
+        </div>
+        <div class="dl-submeta">
+          @if (task.destination; as target) {
+          <span class="dl-dest-inline">
+            <mx-icon name="Folder" [size]="12" />{{ display(target) }}
+          </span>
+          <span>·</span>
+          }
+          <time [attr.datetime]="task.createdAt">
+            {{ task.createdAt | date: 'dd/MM/yyyy HH:mm' }}
+          </time>
+        </div>
+      </div>
+    </div>
+
+    <div class="dl-progress-wrap">
+      <div
+        class="dl-progress"
+        role="progressbar"
+        [attr.aria-label]="'Progreso de ' + task.name"
+        [attr.aria-valuenow]="progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <span
+          [class]="tone"
+          [class.indeterminate]="
+            progress === null && (task.status === 'running' || task.status === 'publishing')
+          "
+          [style.width.%]="progress ?? (task.status === 'running' ? 30 : 0)"
+        ></span>
+      </div>
+    </div>
+
+    <div class="dl-metrics-row">
+      <div class="dl-metrics tabular">
+        <span>
+          {{ bytes(task.downloaded) }} / {{ task.total || progress === 100 ? bytes(task.total) : '—'
+          }}
+        </span>
+        @if (progress !== null) {
+        <span class="metric-strong">{{ progress }} %</span>
+        } @if (task.speed) {
+        <span class="metric-speed">{{ bytes(task.speed) }}/s</span>
+        } @if (eta(task); as remaining) {
+        <span>Restan {{ remaining }}</span>
         }
-      </ul>
-    </details>
-    } @else {
-    <ng-container *ngTemplateOutlet="taskRow; context: { $implicit: group.tasks[0] }" />
+      </div>
+
+      @if (task.actions.length || task.result) {
+      <div class="dl-card-actions">
+        @if (task.result) {
+        <button
+          type="button"
+          class="button compact secondary"
+          (click)="open(task)"
+          [disabled]="busy().has(task.id)"
+        >
+          <mx-icon name="FolderOpen" [size]="14" />Abrir en el explorador
+        </button>
+        } @for (action of task.actions; track action) {
+        <button
+          type="button"
+          class="button compact ghost"
+          [class.danger-hover]="action === 'cancel' || action === 'remove'"
+          [disabled]="busy().has(task.id)"
+          (click)="command(task, action)"
+        >
+          <mx-icon [name]="actionIcon(action)" [size]="14" />{{ actionLabel(action) }}
+        </button>
+        }
+      </div>
+      }
+    </div>
+
+    @if (task.error) {
+    <div class="dl-task-error" role="alert">
+      <mx-icon name="AlertCircle" [size]="14" />
+      <span>{{ task.error }}</span>
+    </div>
     }
-  </li>
-  }
-</ul>
-@if (pages() > 1) {
-<nav class="download-pagination" aria-label="Páginas de descargas">
-  <button class="button compact secondary" [disabled]="page() === 0" (click)="showPage(page() - 1)">
-    Anterior
-  </button>
-  <span>{{ page() + 1 }} / {{ pages() }}</span>
-  <button
-    class="button compact secondary"
-    [disabled]="page() + 1 >= pages()"
-    (click)="showPage(page() + 1)"
+  </article>
+</ng-template>
+
+<!-- ===================== MODAL: FOLDER PICKER ===================== -->
+@if (picker(); as mode) { @let initialLoc = mode === 'default' ? settings()?.destination :
+destination(); @if (initialLoc) {
+<div
+  class="modal-backdrop"
+  (mousedown)="$event.target === $event.currentTarget && !saving() && picker.set(null)"
+>
+  <section
+    class="modal dl-modal-picker"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="
+      mode === 'default' ? 'Elegir carpeta predeterminada' : 'Elegir carpeta del lote'
+    "
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
   >
-    Siguiente
-  </button>
-</nav>
-} } @else {
-<div class="state-box">
-  <mx-icon name="Download" [size]="30" />
-  @if (filter !== 'all' || query.trim()) {
-  <strong>Ninguna descarga coincide con el filtro</strong>
-  } @else {
-  <strong>Sin descargas</strong>
-  }
+    <header class="modal-header">
+      <div>
+        <div class="eyebrow">DESTINO DE DESCARGAS</div>
+        <h2>{{ mode === 'default' ? 'Carpeta predeterminada' : 'Carpeta para este lote' }}</h2>
+      </div>
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="Cerrar selector"
+        [disabled]="saving()"
+        (click)="picker.set(null)"
+      >
+        <mx-icon name="X" />
+      </button>
+    </header>
+    <div class="modal-body dl-picker-body">
+      <div class="picker-area dl-picker-area">
+        <mx-explorer
+          #folderPicker
+          [panelId]="mode === 'default' ? 'download-default' : 'download-batch'"
+          [picker]="true"
+          [initialLocation]="initialLoc"
+        />
+        <div class="picker-footer">
+          <span>{{ display(folderPicker.location()) }}</span>
+        </div>
+      </div>
+    </div>
+    <footer class="modal-footer">
+      <button
+        type="button"
+        class="button secondary"
+        [disabled]="saving()"
+        (click)="picker.set(null)"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="button primary"
+        [disabled]="saving() || adding() || folderPicker.loading() || !!folderPicker.error()"
+        (click)="selectDestination(folderPicker.location())"
+      >
+        <mx-icon name="Check" [size]="15" />
+        {{ mode === 'default' ? 'Guardar como predeterminada' : 'Usar esta carpeta' }}
+      </button>
+    </footer>
+  </section>
 </div>
-} } @else if (!loadingError()) {
-<div class="state-box" role="status">
-  <mx-icon name="LoaderCircle" class="spinning" [size]="24" />
-  <span>Cargando descargas…</span>
+} }
+
+<!-- ===================== MODAL: ACCOUNT FORM ===================== -->
+@if (accountDraft(); as draft) {
+<div
+  class="modal-backdrop"
+  (mousedown)="$event.target === $event.currentTarget && !saving() && editAccount(null)"
+>
+  <section
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="account-modal-title"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+  >
+    <header class="modal-header">
+      <div>
+        <div class="eyebrow">CUENTA DE ALOJAMIENTO</div>
+        <h2 id="account-modal-title">{{ draft.id ? 'Editar cuenta' : 'Añadir cuenta' }}</h2>
+      </div>
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="Cerrar formulario"
+        [disabled]="saving()"
+        (click)="editAccount(null)"
+      >
+        <mx-icon name="X" />
+      </button>
+    </header>
+    <form (ngSubmit)="saveAccount(draft)">
+      <div class="modal-body dl-account-modal-body">
+        <label>
+          Proveedor
+          <select
+            name="provider"
+            class="dl-select"
+            [(ngModel)]="draft.provider"
+            [disabled]="!!draft.id || saving()"
+          >
+            @for (option of providerOptions; track option[0]) {
+            <option [value]="option[0]">{{ option[1] }}</option>
+            }
+          </select>
+        </label>
+
+        <div class="info-banner dl-provider-hint">
+          <mx-icon name="Info" [size]="16" />
+          <span>{{ providerHint(draft.provider) }}</span>
+        </div>
+
+        <label>
+          Nombre de la cuenta
+          <input
+            name="label"
+            [(ngModel)]="draft.label"
+            required
+            maxlength="80"
+            placeholder="Ej. Mi cuenta prémium"
+            [disabled]="saving()"
+          />
+        </label>
+
+        @if (usesEmail(draft.provider)) {
+        <label>
+          Correo de {{ providerName(draft.provider) }}
+          <input
+            name="email"
+            type="email"
+            autocomplete="off"
+            [(ngModel)]="draft.email"
+            required
+            maxlength="254"
+            placeholder="nombre@ejemplo.com"
+            [disabled]="saving()"
+          />
+        </label>
+        }
+
+        <div class="dl-field-group">
+          <label for="account-secret">
+            {{ secretLabel(draft.provider) }} @if (!accountSecretRequired()) {
+            <span class="optional">opcional</span>
+            }
+          </label>
+          <div class="secret-input-wrap">
+            <input
+              id="account-secret"
+              name="secret"
+              [type]="showSecret() ? 'text' : 'password'"
+              autocomplete="new-password"
+              [(ngModel)]="secret"
+              [required]="accountSecretRequired()"
+              [placeholder]="
+                accountSecretRequired() ? '' : 'Dejar en blanco para conservarla'
+              "
+              maxlength="1024"
+              [disabled]="saving()"
+            />
+            <button
+              type="button"
+              class="icon-button secret-toggle"
+              [attr.aria-label]="showSecret() ? 'Ocultar secreto' : 'Mostrar secreto'"
+              (click)="showSecret.set(!showSecret())"
+            >
+              <mx-icon [name]="showSecret() ? 'EyeOff' : 'Eye'" [size]="16" />
+            </button>
+          </div>
+        </div>
+
+        @if (draft.id && accountSecretRequired()) {
+        <p class="field-help">
+          Al cambiar el correo debes volver a introducir la contraseña o clave.
+        </p>
+        } @if (settingsError()) {
+        <div class="inline-error" role="alert">
+          <mx-icon name="AlertCircle" />{{ settingsError() }}
+        </div>
+        }
+      </div>
+
+      <footer class="modal-footer">
+        <button
+          type="button"
+          class="button secondary"
+          [disabled]="saving()"
+          (click)="editAccount(null)"
+        >
+          Cancelar
+        </button>
+        <button
+          class="button primary"
+          type="submit"
+          [disabled]="
+            saving() ||
+            !draft.label.trim() ||
+            (usesEmail(draft.provider) && !draft.email?.trim()) ||
+            (accountSecretRequired() && !secret)
+          "
+        >
+          <mx-icon
+            [name]="saving() ? 'LoaderCircle' : 'Check'"
+            [class.spinning]="saving()"
+            [size]="15"
+          />
+          {{ saving() ? 'Comprobando…' : 'Guardar cuenta' }}
+        </button>
+      </footer>
+    </form>
+  </section>
 </div>
 }
 
-<ng-template #taskRow let-task>
-  @let progress = percent(task);
-  <div class="download-item">
-    <div class="download-info">
-      <strong [title]="task.name">{{ task.name }}</strong>
-      <span>{{ downloadState(task.status) }}</span>
-    </div>
-    <progress
-      [attr.value]="progress"
-      max="100"
-      [attr.aria-label]="'Progreso de ' + task.name"
-    ></progress>
-    <div class="download-metrics">
-      <span
-        >{{ bytes(task.downloaded) }} / {{ task.total || progress === 100 ? bytes(task.total) : '—'
-        }}</span
-      >
-      @if (progress !== null) { <span>{{ progress }} %</span> } @if (task.speed) {
-      <span>{{ bytes(task.speed) }}/s</span> } @if (eta(task); as remaining) {
-      <span>Restan {{ remaining }}</span> }
-    </div>
-    <div class="download-metrics">
-      @if (task.destination; as target) { <span>{{ display(target) }}</span> }
-      <time [attr.datetime]="task.createdAt">{{ task.createdAt | date: 'dd/MM/yyyy HH:mm' }}</time>
-    </div>
-    @if (task.error) {
-    <p class="failure">{{ task.error }}</p>
-    } @if (task.actions.length || task.result) {
-    <div class="download-actions">
-      @if (task.result) {
+<!-- ===================== MODAL: CONFIRMATION ===================== -->
+@if (confirmDialog(); as dialog) {
+<div
+  class="modal-backdrop"
+  (mousedown)="$event.target === $event.currentTarget && !confirmBusy() && confirmDialog.set(null)"
+>
+  <section
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="confirm-modal-title"
+    cdkTrapFocus
+    [cdkTrapFocusAutoCapture]="true"
+  >
+    <header class="modal-header">
+      <div>
+        <div class="eyebrow">{{ dialog.eyebrow }}</div>
+        <h2 id="confirm-modal-title">{{ dialog.title }}</h2>
+      </div>
       <button
-        class="button compact secondary"
-        (click)="open(task)"
-        [disabled]="busy().has(task.id)"
+        type="button"
+        class="icon-button"
+        aria-label="Cerrar confirmación"
+        [disabled]="confirmBusy()"
+        (click)="confirmDialog.set(null)"
       >
-        <mx-icon name="FolderOpen" [size]="16" />Abrir en el explorador
+        <mx-icon name="X" />
       </button>
-      } @for (action of task.actions; track action) {
-      <button
-        class="button compact ghost"
-        [class.danger-hover]="action === 'cancel' || action === 'remove'"
-        [disabled]="busy().has(task.id)"
-        (click)="command(task, action)"
-      >
-        {{ actionLabel(action) }}
-      </button>
-      }
+    </header>
+    <div class="modal-body">
+      <div [class]="dialog.danger ? 'warning-banner' : 'info-banner dl-confirm-info'">
+        <mx-icon [name]="dialog.danger ? 'AlertTriangle' : 'Info'" [size]="22" />
+        <div>
+          <p>{{ dialog.message }}</p>
+          @if (dialog.detail) {
+          <p class="dl-confirm-detail">{{ dialog.detail }}</p>
+          }
+        </div>
+      </div>
     </div>
-    }
-  </div>
-</ng-template>
+    <footer class="modal-footer">
+      <button
+        type="button"
+        class="button secondary"
+        [disabled]="confirmBusy()"
+        (click)="confirmDialog.set(null)"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="button"
+        [class.danger]="dialog.danger"
+        [class.primary]="!dialog.danger"
+        [disabled]="confirmBusy()"
+        (click)="runConfirm()"
+      >
+        <mx-icon
+          [name]="confirmBusy() ? 'LoaderCircle' : dialog.danger ? 'Trash2' : 'Check'"
+          [class.spinning]="confirmBusy()"
+          [size]="15"
+        />
+        {{ dialog.confirmLabel }}
+      </button>
+    </footer>
+  </section>
+</div>
+}

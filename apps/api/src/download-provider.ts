@@ -26,7 +26,7 @@ export interface DownloadProvider {
   validate?(url: string, accountId?: string): void;
   add(url: string, id: string, accountId?: string): Promise<string>;
   resolve?(url: string, accountId?: string): Promise<DownloadResource>;
-  check?(url: string): Promise<DownloadLinkCheck>;
+  check?(url: string, accountId?: string): Promise<DownloadLinkCheck>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   cancel(id: string): Promise<void>;

@@ -2,7 +2,7 @@ services:
   muxplorer:
     build:
       context: .
-    image: muxplorer:0.5.0
+    image: muxplorer:0.6.0
     ports:
       - '${WEB_PORT:-8098}:8098'
     user: '${PUID:-1000}:${PGID:-1000}'

@@ -13,6 +13,8 @@ import { createHash } from 'node:crypto';
 import type {
   Download,
   DownloadAction,
+  DownloadBulkResult,
+  DownloadCounts,
   DownloadEngine,
   DownloadGroup,
   DownloadLinkCheck,
@@ -457,15 +459,17 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       .map((record) => this.view(record));
     const active = tasks.filter((task) => activeStates.includes(task.status));
     const search = query.toLocaleLowerCase('es');
+    const matchesFilter = (task: Download, target: DownloadFilter) =>
+      target === 'all' ||
+      (target === 'active'
+        ? activeStates.includes(task.status)
+        : target === 'issues'
+          ? issueStates.includes(task.status)
+          : task.status === target);
     const matches = (task: Download) =>
       (task.name.toLocaleLowerCase('es').includes(search) ||
         task.multipart?.name.toLocaleLowerCase('es').includes(search)) &&
-      (filter === 'all' ||
-        (filter === 'active'
-          ? activeStates.includes(task.status)
-          : filter === 'issues'
-            ? issueStates.includes(task.status)
-            : task.status === filter));
+      matchesFilter(task, filter);
     const groups = new Map<string, DownloadGroup>();
     for (const task of tasks) {
       const part = task.multipart;
@@ -480,7 +484,28 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       group.tasks.push(task);
       if (part) group.expected = Math.max(group.expected ?? 0, part.expected);
     }
-    const filtered = [...groups.values()].filter((group) => group.tasks.some(matches));
+    const allGroups = [...groups.values()];
+    const counts: DownloadCounts = {
+      all: allGroups.length,
+      active: allGroups.filter((group) => group.tasks.some((t) => matchesFilter(t, 'active')))
+        .length,
+      paused: allGroups.filter((group) => group.tasks.some((t) => matchesFilter(t, 'paused')))
+        .length,
+      issues: allGroups.filter((group) => group.tasks.some((t) => matchesFilter(t, 'issues')))
+        .length,
+      completed: allGroups.filter((group) => group.tasks.some((t) => matchesFilter(t, 'completed')))
+        .length,
+      cancelled: allGroups.filter((group) => group.tasks.some((t) => matchesFilter(t, 'cancelled')))
+        .length,
+      pausable: tasks.filter((task) => task.actions.includes('pause')).length,
+      resumable: tasks.filter((task) => task.actions.includes('resume')).length,
+      clearable: tasks.filter(
+        (task) =>
+          (task.status === 'completed' || task.status === 'cancelled') &&
+          task.actions.includes('remove'),
+      ).length,
+    };
+    const filtered = allGroups.filter((group) => group.tasks.some(matches));
     const pageGroups = filtered.slice(page * limit, (page + 1) * limit);
     for (const group of pageGroups) {
       if (!group.expected) continue;
@@ -499,6 +524,7 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
       total: filtered.length,
       active: active.length,
       speed: active.reduce((sum, task) => sum + task.speed, 0),
+      counts,
     };
   }
 
@@ -538,9 +564,11 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async check(url: string): Promise<DownloadLinkCheck> {
+  async check(url: string, accountId?: string): Promise<DownloadLinkCheck> {
     this.requireEngine();
-    const result: DownloadLinkCheck = (await this.provider.check?.(url)) ?? { status: 'unknown' };
+    const result: DownloadLinkCheck = (await this.provider.check?.(url, accountId)) ?? {
+      status: 'unknown',
+    };
     const name = result.name ?? nameFromLink(url);
     try {
       return {
@@ -645,51 +673,113 @@ export class Downloads implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async applyCommand(record: RecordData, action: DownloadAction) {
+    const id = record.id;
+    if (this.publishingId === id) throw new ConflictException('La publicación está en curso.');
+    if (action === 'publish') {
+      this.requireEngine();
+      if (!record.publicationError)
+        throw new ConflictException('No hay una publicación pendiente de reintento.');
+      this.save({ ...record, publicationError: undefined });
+      this.startPublication();
+    } else if (action === 'cancel' || action === 'remove') {
+      if (
+        action === 'cancel' &&
+        (record.phase === 'completed' || this.tasks.get(id)?.status === 'done')
+      )
+        throw new ConflictException('La descarga ya está completa.');
+      if (record.cleaned) {
+        if (action === 'remove') this.forget(id);
+      } else {
+        if (
+          record.phase === 'creating' &&
+          Date.now() - Date.parse(record.createdAt) < creationGrace
+        )
+          throw new ConflictException('Espera a que Gopeed confirme el alta.');
+        if (record.publication && record.phase !== 'completed' && !record.publicationError)
+          throw new ConflictException('Confirma primero el resultado de la publicación pendiente.');
+        this.save({ ...record, intent: action });
+      }
+    } else {
+      this.requireEngine();
+      const task = this.tasks.get(id);
+      const allowed = action === 'pause' ? ['running', 'pending'] : ['paused', 'failed'];
+      if (!task || !allowed.includes(task.status) || record.intent || record.phase !== 'active')
+        throw new ConflictException('La tarea no admite esta acción en su estado actual.');
+      try {
+        await this.provider[action](task.id);
+      } catch (error) {
+        throw new ServiceUnavailableException(
+          error instanceof ProviderError ? error.message : 'Gopeed no confirmó la acción.',
+        );
+      }
+    }
+  }
+
   command(id: string, action: DownloadAction) {
     return this.serial(async () => {
-      const record = this.row(id);
-      if (this.publishingId === id) throw new ConflictException('La publicación está en curso.');
-      if (action === 'publish') {
+      await this.applyCommand(this.row(id), action);
+      return { ok: true };
+    }).finally(() => {
+      if (!this.stopped) void this.refresh();
+    });
+  }
+
+  bulk(
+    request:
+      | { scope: 'all'; action: 'pause' | 'resume' | 'clear-finished' }
+      | { scope: 'ids'; ids: string[]; action: DownloadAction },
+  ): Promise<DownloadBulkResult> {
+    return this.serial(async () => {
+      if (
+        (request.scope === 'all' && request.action !== 'clear-finished') ||
+        (request.scope === 'ids' && ['pause', 'resume', 'publish'].includes(request.action))
+      )
         this.requireEngine();
-        if (!record.publicationError)
-          throw new ConflictException('No hay una publicación pendiente de reintento.');
-        this.save({ ...record, publicationError: undefined });
-        this.startPublication();
-      } else if (action === 'cancel' || action === 'remove') {
-        if (
-          action === 'cancel' &&
-          (record.phase === 'completed' || this.tasks.get(id)?.status === 'done')
-        )
-          throw new ConflictException('La descarga ya está completa.');
-        if (record.cleaned) {
-          if (action === 'remove') this.forget(id);
-        } else {
-          if (
-            record.phase === 'creating' &&
-            Date.now() - Date.parse(record.createdAt) < creationGrace
-          )
-            throw new ConflictException('Espera a que Gopeed confirme el alta.');
-          if (record.publication && record.phase !== 'completed' && !record.publicationError)
-            throw new ConflictException(
-              'Confirma primero el resultado de la publicación pendiente.',
-            );
-          this.save({ ...record, intent: action });
+
+      const action: DownloadAction =
+        request.action === 'clear-finished' ? 'remove' : request.action;
+      let ok = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      if (request.scope === 'all') {
+        const records = [...this.records.values()].filter((record) => record.intent !== 'remove');
+        for (const record of records) {
+          const view = this.view(record);
+          const eligible =
+            request.action === 'clear-finished'
+              ? (view.status === 'completed' || view.status === 'cancelled') &&
+                view.actions.includes('remove')
+              : view.actions.includes(action);
+          if (!eligible) continue;
+          try {
+            await this.applyCommand(record, action);
+            ok++;
+          } catch {
+            failed++;
+          }
         }
       } else {
-        this.requireEngine();
-        const task = this.tasks.get(id);
-        const allowed = action === 'pause' ? ['running', 'pending'] : ['paused', 'failed'];
-        if (!task || !allowed.includes(task.status) || record.intent || record.phase !== 'active')
-          throw new ConflictException('La tarea no admite esta acción en su estado actual.');
-        try {
-          await this.provider[action](task.id);
-        } catch (error) {
-          throw new ServiceUnavailableException(
-            error instanceof ProviderError ? error.message : 'Gopeed no confirmó la acción.',
-          );
+        for (const id of new Set(request.ids)) {
+          const record = this.records.get(id);
+          if (!record || record.intent === 'remove') {
+            skipped++;
+            continue;
+          }
+          if (!this.view(record).actions.includes(action)) {
+            skipped++;
+            continue;
+          }
+          try {
+            await this.applyCommand(record, action);
+            ok++;
+          } catch {
+            failed++;
+          }
         }
       }
-      return { ok: true };
+      return { ok, skipped, failed };
     }).finally(() => {
       if (!this.stopped) void this.refresh();
     });

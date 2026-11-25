@@ -162,9 +162,9 @@ export class DownloadRouting implements DownloadProvider {
     });
   }
 
-  async check(url: string): Promise<DownloadLinkCheck> {
+  async check(url: string, accountId?: string): Promise<DownloadLinkCheck> {
     try {
-      return await this.route<DownloadLinkCheck>(url, undefined, async (source, mega, selected) => {
+      return await this.route<DownloadLinkCheck>(url, accountId, async (source, mega, selected) => {
         if (mega) {
           const resource = await this.resolveMega(source.href, selected);
           return {

@@ -59,6 +59,17 @@ const pagination = z
   })
   .strict();
 const action = z.enum(['pause', 'resume', 'cancel', 'remove', 'publish']);
+const bulk = z.discriminatedUnion('scope', [
+  z.strictObject({
+    scope: z.literal('all'),
+    action: z.enum(['pause', 'resume', 'clear-finished']),
+  }),
+  z.strictObject({
+    scope: z.literal('ids'),
+    ids: z.array(id).min(1).max(200),
+    action,
+  }),
+]);
 const accountFields = {
   id: id.optional(),
   label: z.string().trim().min(1).max(80),
@@ -131,8 +142,12 @@ export class DownloadsController {
   }
 
   @Post('check') check(@Body() body: unknown) {
-    const source = parse(z.strictObject({ url }), body);
-    return this.downloads.check(source.url);
+    const source = parse(z.strictObject({ url, accountId: id.optional() }), body);
+    return this.downloads.check(source.url, source.accountId);
+  }
+
+  @Post('bulk') bulk(@Body() body: unknown) {
+    return this.downloads.bulk(parse(bulk, body));
   }
 
   @Get('settings') settings() {

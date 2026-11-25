@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.6.0
+
+- Rediseña el gestor de descargas con tres secciones separadas (**Cola**, **Capturador** y **Ajustes**), modales personalizados y estética unificada con Muxplorer.
+- Añade acciones globales en lote (_Pausar todo_, _Reanudar todo_, _Limpiar finalizadas_), acciones por paquete multiparte y contadores reales en los filtros de estado.
+- Mejora el capturador con extracción inteligente de enlaces desde texto mezclado, importación/arrastre de archivos `.txt`, selector opcional de cuenta por lote, filtros rápidos y limpieza de enlaces no disponibles.
+
 ## 0.5.0
 
 - Añade el inicio de sesión web de 1fichier con correo y contraseña y selección automática de la cuenta para sus enlaces.

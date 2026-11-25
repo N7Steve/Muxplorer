@@ -616,3 +616,104 @@ test(
     );
   },
 );
+
+test('list exposes group and action counts and bulk executes safe batch commands', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mux-downloads-bulk-'));
+  class IsolatedVolume extends DownloadPublication {
+    override async staging() {
+      return root;
+    }
+    override async cleanPrepared() {}
+  }
+  const files = new IsolatedVolume(new Files(new Paths(), new Processes()));
+  const tasks = new Map<string, EngineTask>();
+  const provider = {
+    async info() {
+      return { version: '1.9.3' };
+    },
+    async list() {
+      return [...tasks.values()];
+    },
+    async get(id: string) {
+      return tasks.get(id) ?? null;
+    },
+    async add(_url: string, id: string) {
+      const task = fixture(id, 'running');
+      tasks.set(task.id, task);
+      return task.id;
+    },
+    async pause(id: string) {
+      tasks.get(id)!.status = 'paused';
+    },
+    async resume(id: string) {
+      tasks.get(id)!.status = 'running';
+    },
+    async cancel(id: string) {
+      tasks.delete(id);
+    },
+    async remove(id: string) {
+      tasks.delete(id);
+    },
+  };
+  const store = new Store(root);
+  const service = new Downloads(store, files, provider, 'http://engine', 'token');
+  t.after(async () => {
+    await service.onModuleDestroy();
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await service.refresh();
+  const first = randomUUID();
+  const second = randomUUID();
+  await service.add([
+    { id: first, url: 'https://fixture.invalid/one.bin' },
+    { id: second, url: 'https://fixture.invalid/two.bin' },
+  ]);
+  await service.refresh();
+
+  let page = service.list(0, 30);
+  assert.equal(page.counts?.all, 2);
+  assert.equal(page.counts?.active, 2);
+  assert.equal(page.counts?.pausable, 2);
+  assert.equal(page.counts?.resumable, 0);
+  assert.equal(page.counts?.clearable, 0);
+
+  assert.deepEqual(await service.bulk({ scope: 'all', action: 'pause' }), {
+    ok: 2,
+    skipped: 0,
+    failed: 0,
+  });
+  await service.refresh();
+  page = service.list(0, 30);
+  assert.equal(page.counts?.paused, 2);
+  assert.equal(page.counts?.resumable, 2);
+
+  assert.deepEqual(await service.bulk({ scope: 'ids', ids: [first], action: 'resume' }), {
+    ok: 1,
+    skipped: 0,
+    failed: 0,
+  });
+  await service.refresh();
+  assert.equal(service.get(first).status, 'running');
+  assert.equal(service.get(second).status, 'paused');
+
+  assert.deepEqual(await service.bulk({ scope: 'ids', ids: [second], action: 'cancel' }), {
+    ok: 1,
+    skipped: 0,
+    failed: 0,
+  });
+  await service.refresh();
+  page = service.list(0, 30);
+  assert.equal(page.counts?.cancelled, 1);
+  assert.equal(page.counts?.clearable, 1);
+
+  assert.deepEqual(await service.bulk({ scope: 'all', action: 'clear-finished' }), {
+    ok: 1,
+    skipped: 0,
+    failed: 0,
+  });
+  await service.refresh();
+  page = service.list(0, 30);
+  assert.equal(page.counts?.all, 1);
+  assert.equal(page.counts?.cancelled, 0);
+});
