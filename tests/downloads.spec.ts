@@ -61,16 +61,51 @@ test('Descargas recibe progreso, separa ajustes, conserva el explorador y selecc
       'http://fixture:8080/slow.bin',
       'http://fixture:8080/browser.part01.rar',
       'http://fixture:8080/browser.part03.rar',
+      'http://fixture:8080/4RMGU',
+      'http://fixture:8080/unknown-size.bin',
+      'http://fixture:8080/unavailable.html',
       ...Array.from({ length: 21 }, (_, index) => 'http://fixture:8080/missing-' + index + '.bin'),
     ].join('\n'),
   );
   await page.getByRole('button', { name: 'Comprobar enlaces' }).click();
   const captured = page.getByRole('region', { name: 'Enlaces capturados' });
-  await expect(captured.getByText(/25 de 25 comprobados · 4 en línea/)).toBeVisible();
-  await expect(captured.getByText('Fuera de línea')).toHaveCount(21);
+  await expect(captured.getByText('28 de 28 comprobados')).toBeVisible();
+  await expect(captured.getByText('Fuera de línea', { exact: true })).toHaveCount(21);
   await expect(captured.getByText('Paquete incompleto')).toBeVisible();
 
-  await page.getByRole('button', { name: /Añadir seleccionados a descargas/ }).click();
+  const allOnline = captured.getByRole('checkbox', { name: 'Seleccionar todos en línea' });
+  const add = captured.getByRole('button', { name: 'Añadir seleccionados a descargas' });
+  const selection = captured.getByRole('status').filter({ hasText: 'seleccionado' });
+  await expect(allOnline).toBeChecked();
+  await captured.getByRole('button', { name: 'Dudosos 3' }).click();
+  await expect(captured.getByText('Dudoso', { exact: true })).toHaveCount(3);
+  await expect(captured.getByText('Archivo sin extensión.')).toBeVisible();
+  await expect(captured.getByText('Tamaño sin confirmar.')).toBeVisible();
+  await expect(captured.getByText('El enlace puede apuntar a una página web.')).toBeVisible();
+  await expect(captured.getByText('browser.txt', { exact: true })).toHaveCount(0);
+  const warningLink = captured.getByRole('checkbox', { name: /4RMGU/ });
+  await expect(warningLink).not.toBeChecked();
+  await warningLink.check();
+  await expect(selection).toContainText('5 seleccionados');
+  await captured.getByRole('button', { name: 'Deseleccionar todo' }).click();
+  await expect(warningLink).not.toBeChecked();
+  await expect(allOnline).not.toBeChecked();
+  await expect(add).toBeDisabled();
+  await captured.getByRole('button', { name: 'Volver a comprobar' }).click();
+  await expect(allOnline).toBeEnabled();
+  await expect(add).toBeDisabled();
+  await captured.getByRole('button', { name: 'En línea 4' }).click();
+  const singleLink = captured.getByRole('checkbox', { name: 'browser.txt', exact: true });
+  await singleLink.check();
+  await expect(selection).toContainText('1 seleccionado ·');
+  await expect(add).toBeEnabled();
+  await allOnline.check();
+  await expect(selection).toContainText('4 seleccionados');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.setViewportSize({ width: 1512, height: 982 });
+
+  await add.click();
   await page.getByRole('dialog').getByRole('button', { name: 'Añadir partes disponibles' }).click();
 
   // Cola de descargas (se abre automáticamente al añadir)

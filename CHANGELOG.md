@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.6.1
+
+- Marca como dudosos los enlaces con tamaño sin confirmar, archivos sin extensión y posibles páginas web. Los enlaces dudosos se pueden seleccionar manualmente.
+- Mantiene visible la selección en el capturador, añade un filtro de enlaces dudosos y permite deseleccionar todo sin cambiar de filtro.
+
 ## 0.6.0
 
 - Rediseña el gestor de descargas con tres secciones separadas (**Cola**, **Capturador** y **Ajustes**), modales personalizados y estética unificada con Muxplorer.

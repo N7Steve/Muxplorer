@@ -547,19 +547,18 @@
       <div>
         <h2 id="captured-heading">Enlaces capturados</h2>
         <p class="dl-card-sub" role="status">
-          {{ checkedCount() }} de {{ captured().length }} comprobados · {{ onlineCount() }} en línea
-          @if (selectedBytes()) { · {{ bytes(selectedBytes()) }} seleccionados }
+          {{ checkedCount() }} de {{ captured().length }} comprobados
         </p>
       </div>
       <div class="dl-inline-tools">
-        @if (issueCaptureCount() > 0) {
+        @if (offlineCount() > 0) {
         <button
           type="button"
           class="button compact ghost"
           [disabled]="checking() || adding()"
-          (click)="removeUnavailableCaptured()"
+          (click)="removeOfflineCaptured()"
         >
-          <mx-icon name="Eraser" [size]="14" />Quitar no disponibles
+          <mx-icon name="Eraser" [size]="14" />Quitar fuera de línea
         </button>
         }
         <button
@@ -568,7 +567,7 @@
           [disabled]="checking() || adding() || !available() || onlineCount() === captured().length"
           (click)="recheck()"
         >
-          <mx-icon name="RefreshCw" [size]="14" />Volver a comprobar pendientes
+          <mx-icon name="RefreshCw" [size]="14" />Volver a comprobar
         </button>
         <button
           type="button"
@@ -585,35 +584,66 @@
     <div class="dl-progress check-progress" aria-hidden="true">
       <span class="active" [style.width.%]="captureProgress()"></span>
     </div>
-    } @if (onlineCount() > 0 && issueCaptureCount() > 0) {
-    <div class="filter-pills compact-pills" role="group" aria-label="Filtrar enlaces capturados">
-      <button
-        type="button"
-        class="filter-pill"
-        [class.selected]="captureFilter() === 'all'"
-        (click)="captureFilter.set('all')"
-      >
-        Todos <span class="pill-count">{{ captured().length }}</span>
-      </button>
-      <button
-        type="button"
-        class="filter-pill"
-        [class.selected]="captureFilter() === 'online'"
-        (click)="captureFilter.set('online')"
-      >
-        En línea <span class="pill-count">{{ onlineCount() }}</span>
-      </button>
-      <button
-        type="button"
-        class="filter-pill has-issues"
-        [class.selected]="captureFilter() === 'issues'"
-        (click)="captureFilter.set('issues')"
-      >
-        Con problemas <span class="pill-count">{{ issueCaptureCount() }}</span>
-      </button>
-    </div>
     }
+    <div class="filter-pills" role="group" aria-label="Filtrar enlaces capturados">
+      @for (option of captureFilters(); track option.id) {
+      <button
+        type="button"
+        class="filter-pill"
+        [class.selected]="captureFilter() === option.id"
+        [class.has-issues]="option.id === 'issues' && option.count > 0"
+        [class.has-warnings]="option.id === 'warning' && option.count > 0"
+        [attr.aria-pressed]="captureFilter() === option.id"
+        (click)="captureFilter.set(option.id)"
+      >
+        {{ option.label }} <span class="pill-count">{{ option.count }}</span>
+      </button>
+      }
+    </div>
 
+    <div class="dl-capture-selection">
+      <div class="dl-inline-tools">
+        <label class="capture-select-all">
+          <input
+            type="checkbox"
+            [checked]="onlineCount() > 0 && selectedOnlineCount() === onlineCount()"
+            [indeterminate]="selectedOnlineCount() > 0 && selectedOnlineCount() < onlineCount()"
+            [disabled]="adding() || checking() || !onlineCount()"
+            (change)="selectOnline($any($event.target).checked)"
+          />
+          Seleccionar todos en línea
+        </label>
+        <button
+          type="button"
+          class="button compact ghost"
+          [disabled]="adding() || checking() || !selectionCount()"
+          (click)="clearCaptureSelection()"
+        >
+          Deseleccionar todo
+        </button>
+      </div>
+      <div class="dl-inline-tools">
+        <span class="tabular muted-text" role="status">
+          {{ selectionCount() }} {{ selectionCount() === 1 ? 'seleccionado' : 'seleccionados' }} @if
+          (selectedBytes()) { · {{ bytes(selectedBytes()) }} }
+        </span>
+        <button
+          type="button"
+          class="button primary"
+          [disabled]="adding() || checking() || !available() || !selectionCount()"
+          (click)="add()"
+        >
+          <mx-icon
+            [name]="adding() ? 'LoaderCircle' : 'Download'"
+            [class.spinning]="adding()"
+            [size]="16"
+          />
+          {{ adding() ? 'Añadiendo…' : 'Añadir seleccionados a descargas' }}
+        </button>
+      </div>
+    </div>
+
+    @if (filteredCaptureGroups().length) {
     <ul class="dl-list dl-capture-list" aria-label="Resultados de la comprobación">
       @for (group of filteredCaptureGroups(); track group.id) {
       <li>
@@ -622,10 +652,10 @@
           <summary>
             <input
               type="checkbox"
-              [checked]="group.online > 0 && group.selected === group.online"
-              [indeterminate]="group.selected > 0 && group.selected < group.online"
-              [disabled]="!group.online || adding() || checking()"
-              [attr.aria-label]="'Seleccionar paquete ' + group.name"
+              [checked]="group.selectable > 0 && group.selected === group.selectable"
+              [indeterminate]="group.selected > 0 && group.selected < group.selectable"
+              [disabled]="!group.selectable || adding() || checking()"
+              [attr.aria-label]="'Seleccionar partes visibles de ' + group.name"
               (click)="$event.stopPropagation()"
               (change)="selectGroup(group, $any($event.target).checked)"
             />
@@ -633,13 +663,18 @@
             <strong class="pkg-name">{{ group.name }}</strong>
             <span class="host-pill">{{ group.host }}</span>
             <span class="pkg-count">
-              {{ group.expected - group.missing }} de {{ group.expected }} partes en línea
+              {{ group.online }} de {{ group.expected }} partes en línea
             </span>
-            @if (group.total) {
+            @if (group.warnings) {
+            <span class="dl-badge warn">
+              {{ group.warnings }} {{ group.warnings === 1 ? 'parte dudosa' : 'partes dudosas' }}
+            </span>
+            } @if (group.total) {
             <span class="tabular muted-text">{{ bytes(group.total) }}</span>
             } @if (group.missing) {
             <span class="dl-badge err">Paquete incompleto</span>
             }
+            <mx-icon name="ChevronDown" [size]="15" class="pkg-chevron" />
           </summary>
           <ul class="dl-list package-parts">
             @for (item of group.links; track item.id) {
@@ -656,36 +691,9 @@
       }
     </ul>
 
-    <div class="dl-captured-footer">
-      <button
-        type="button"
-        class="button compact ghost"
-        [disabled]="adding() || checking() || !onlineCount()"
-        (click)="selectOnline(selectionCount() !== onlineCount())"
-      >
-        {{ selectionCount() === onlineCount() && onlineCount() ? 'Quitar selección' : 'Seleccionar
-        todos en línea' }}
-      </button>
-      <div class="dl-captured-cta">
-        @if (selectedBytes()) {
-        <span class="tabular muted-text">{{ bytes(selectedBytes()) }}</span>
-        }
-        <button
-          type="button"
-          class="button primary"
-          [disabled]="adding() || checking() || !available() || !selectionCount()"
-          (click)="add()"
-        >
-          <mx-icon
-            [name]="adding() ? 'LoaderCircle' : 'Download'"
-            [class.spinning]="adding()"
-            [size]="16"
-          />
-          {{ adding() ? 'Añadiendo…' : 'Añadir seleccionados a descargas' }} @if (selectionCount())
-          { ({{ selectionCount() }}) }
-        </button>
-      </div>
-    </div>
+    } @else {
+    <p class="dl-card-sub">No hay enlaces con este filtro.</p>
+    }
   </section>
   }
 </section>
@@ -915,12 +923,16 @@
 <!-- ===================== TEMPLATE: CAPTURED LINK ROW ===================== -->
 <ng-template #capturedRow let-item>
   @let tone = linkStatusTone(item.check?.status);
-  <div class="dl-capture-row" [class.is-offline]="tone === 'err'">
+  <div
+    class="dl-capture-row"
+    [class.is-offline]="tone === 'err'"
+    [class.is-warning]="item.check?.status === 'warning'"
+  >
     <label class="capture-main">
       <input
         type="checkbox"
         [checked]="item.selected"
-        [disabled]="item.check?.status !== 'online' || adding() || checking()"
+        [disabled]="!canSelectLink(item.check?.status) || adding() || checking()"
         (change)="selectLink(item.id, $any($event.target).checked)"
       />
       <div class="capture-text">

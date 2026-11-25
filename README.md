@@ -97,7 +97,7 @@ La compilación y publicación se realizan localmente desde el PC de desarrollo 
 publica imágenes en GHCR. Para fijar una versión exacta o volver atrás, sustituye `latest`
 por una etiqueta `sha-...` o versión publicada. Conserva el volumen `/config`.
 
-La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.6.0 .`, exporta con `docker save -o muxplorer-0.6.0.tar muxplorer:0.6.0`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.6.0` y `pull_policy: never`.
+La alternativa sin conexión sigue disponible: construye con `docker build -t muxplorer:0.6.1 .`, exporta con `docker save -o muxplorer-0.6.1.tar muxplorer:0.6.1`, transfiere el tar y cárgalo con `docker load -i ...`. Solo en ese caso cambia el YAML a `image: muxplorer:0.6.1` y `pull_policy: never`.
 
 Valida los archivos antes de instalar:
 
@@ -209,7 +209,7 @@ pnpm lint
 pnpm typecheck
 pnpm format:check
 pnpm build
-docker build -t muxplorer:0.6.0 .
+docker build -t muxplorer:0.6.1 .
 pnpm test:docker
 pnpm test:downloads
 pnpm exec playwright install chromium

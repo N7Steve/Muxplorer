@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { extname } from 'node:path';
 import type { DownloadAccountProvider, DownloadLinkCheck } from '@muxplorer/shared';
 import { DownloadHosts, nativeHost } from './download-hosts';
 import { DownloadAccounts } from './download-accounts';
@@ -167,21 +168,16 @@ export class DownloadRouting implements DownloadProvider {
       return await this.route<DownloadLinkCheck>(url, accountId, async (source, mega, selected) => {
         if (mega) {
           const resource = await this.resolveMega(source.href, selected);
-          return {
-            status: 'online',
-            name: resource.name || resource.files[0]?.name,
-            total: resource.size,
-          };
+          return this.checkMetadata(
+            resource.name || resource.files[0]?.name,
+            resource.size,
+            !!resource.name,
+          );
         }
         if (selected) {
           const result = await this.hosts.direct(source, this.accounts.get(selected), true);
-          if (result.name) return { status: 'online', name: result.name, total: result.total };
-          const resource = await this.gopeed.resolve(result.link);
-          return {
-            status: 'online',
-            name: resource.name || resource.files[0]?.name,
-            total: resource.size,
-          };
+          if (result.name) return this.checkMetadata(result.name, result.total);
+          return this.checkGopeed(result.link, result);
         }
         if (megaHost(source.hostname))
           throw new HostDownloadError(
@@ -190,24 +186,11 @@ export class DownloadRouting implements DownloadProvider {
         const host = nativeHost(source.hostname);
         if (host) {
           const result = await this.hosts.publicLink(source, host);
-          if ('status' in result) return result;
-          const resource = await this.gopeed.resolve(result.link);
-          return {
-            status: 'online',
-            name: result.name || resource.name || resource.files[0]?.name,
-            total: result.total ?? resource.size,
-          };
+          if ('status' in result) return { ...result, name: this.displayName(result.name) };
+          return this.checkGopeed(result.link, result);
         }
-        const resource = await this.gopeed.resolve(source.href);
-        return {
-          status: 'online',
-          name: resource.name || resource.files[0]?.name,
-          total: resource.size,
-        };
-      }).then((result: DownloadLinkCheck) => ({
-        ...result,
-        name: result.name && this.displayName(result.name),
-      }));
+        return this.checkGopeed(source.href);
+      });
     } catch (error) {
       return error instanceof HostDownloadError
         ? { status: error.status, message: error.message }
@@ -215,7 +198,46 @@ export class DownloadRouting implements DownloadProvider {
     }
   }
 
-  private displayName(name: string) {
+  private async checkGopeed(url: string, metadata?: { name?: string; total?: number }) {
+    const resource = await this.gopeed.resolve(url);
+    const source = new URL(url);
+    const name = metadata?.name || resource.name || resource.files[0]?.name;
+    const isCollection = resource.files.length > 1 || !!resource.files[0]?.path;
+    const hostname = /^https?:$/.test(source.protocol) ? source.hostname : undefined;
+    return this.checkMetadata(
+      name,
+      metadata?.total || resource.size,
+      isCollection,
+      metadata?.name ? undefined : hostname,
+    );
+  }
+
+  private checkMetadata(
+    rawName: string | undefined,
+    total?: number,
+    isCollection = false,
+    httpHostname?: string,
+  ): DownloadLinkCheck {
+    const name = this.displayName(rawName);
+    const extension = name ? extname(name) : '';
+    const hasSize = typeof total === 'number' && Number.isSafeInteger(total) && total > 0;
+    const reasons: string[] = [];
+    if (!name || name.toLowerCase() === httpHostname)
+      reasons.push('Nombre de archivo sin confirmar.');
+    else if (!isCollection && extension.length <= 1) reasons.push('Archivo sin extensión.');
+    else if (!isCollection && httpHostname && /^\.(?:html?|xhtml|php|aspx?)$/i.test(extension))
+      reasons.push('El enlace puede apuntar a una página web.');
+    if (!hasSize) reasons.push('Tamaño sin confirmar.');
+    return {
+      status: reasons.length ? 'warning' : 'online',
+      name,
+      total: hasSize ? total : undefined,
+      message: reasons.length ? reasons.join(' ') : undefined,
+    };
+  }
+
+  private displayName(name?: string) {
+    if (!name) return undefined;
     try {
       return safeName(name);
     } catch {

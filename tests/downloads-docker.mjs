@@ -8,7 +8,7 @@ import path from 'node:path';
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'mux-dl-'));
 const project = 'mux-dl-' + Date.now();
 const fixture = project + '-fixture';
-const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.6.0';
+const image = process.env.MUXPLORER_IMAGE ?? 'muxplorer:0.6.1';
 const token = randomBytes(32).toString('hex');
 const username = 'download-admin';
 const password = 'Muxplorer-download-test-2026';
@@ -65,6 +65,18 @@ const fixtureCode = String.raw`
     const name = new URL(req.url, 'http://fixture').pathname.slice(1);
     if (name.startsWith('missing')) {
       res.writeHead(404).end();
+      return;
+    }
+    if (name === 'unknown-size.bin') {
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      res.write('content');
+      res.end();
+      return;
+    }
+    if (name === 'unavailable.html') {
+      const page = '<html><body>File not found</body></html>';
+      res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': page.length });
+      res.end(page);
       return;
     }
     if (name === 'local.torrent') {

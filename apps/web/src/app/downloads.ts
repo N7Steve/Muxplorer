@@ -53,13 +53,15 @@ interface CaptureGroup {
   expected: number;
   missing: number;
   online: number;
+  warnings: number;
+  selectable: number;
   selected: number;
   total: number;
 }
 
 type DownloadsTab = 'queue' | 'capture' | 'settings';
 type QueueFilter = 'all' | 'active' | 'paused' | 'issues' | 'completed' | 'cancelled';
-type CaptureFilter = 'all' | 'online' | 'issues';
+type CaptureFilter = 'all' | 'online' | 'warning' | 'issues';
 
 interface ConfirmState {
   title: string;
@@ -288,6 +290,7 @@ export class DownloadsView implements OnInit, OnDestroy {
 
   readonly linkStates: Record<DownloadLinkStatus, string> = {
     online: 'En línea',
+    warning: 'Dudoso',
     offline: 'Fuera de línea',
     captcha: 'CAPTCHA requerido',
     'account-required': 'Requiere cuenta',
@@ -358,11 +361,33 @@ export class DownloadsView implements OnInit, OnDestroy {
     () => this.captured().filter((item) => item.check?.status === 'online').length,
   );
 
-  readonly issueCaptureCount = computed(
-    () => this.captured().filter((item) => item.check && item.check.status !== 'online').length,
+  readonly selectedOnlineCount = computed(
+    () => this.captured().filter((item) => item.selected && item.check?.status === 'online').length,
+  );
+
+  readonly warningCount = computed(
+    () => this.captured().filter((item) => item.check?.status === 'warning').length,
+  );
+
+  readonly offlineCount = computed(
+    () => this.captured().filter((item) => item.check?.status === 'offline').length,
   );
 
   readonly checkedCount = computed(() => this.captured().filter((item) => item.check).length);
+
+  readonly captureFilters = computed(
+    () =>
+      [
+        { id: 'all', label: 'Todos', count: this.captured().length },
+        { id: 'online', label: 'En línea', count: this.onlineCount() },
+        { id: 'warning', label: 'Dudosos', count: this.warningCount() },
+        {
+          id: 'issues',
+          label: 'Con problemas',
+          count: this.checkedCount() - this.onlineCount() - this.warningCount(),
+        },
+      ] as const,
+  );
 
   readonly captureProgress = computed(() => {
     const total = this.captured().length;
@@ -384,6 +409,8 @@ export class DownloadsView implements OnInit, OnDestroy {
           expected: 0,
           missing: 0,
           online: 0,
+          warnings: 0,
+          selectable: 0,
           selected: 0,
           total: 0,
         };
@@ -391,20 +418,23 @@ export class DownloadsView implements OnInit, OnDestroy {
       }
       group.links.push(link);
       if (part) group.expected = Math.max(group.expected, part.part);
-      if (link.check?.status === 'online') group.online++;
+      if (this.canSelectLink(link.check?.status)) group.selectable++;
       if (link.selected) group.selected++;
       if (link.check?.total) group.total += link.check.total;
     }
     for (const group of groups.values()) {
       if (!group.expected) continue;
       group.links.sort((a, b) => a.check!.multipart!.part - b.check!.multipart!.part);
-      group.missing =
-        group.expected -
-        new Set(
-          group.links
-            .filter((link) => link.check?.status === 'online')
-            .map((link) => link.check!.multipart!.part),
-        ).size;
+      const onlineParts = new Set<number>();
+      const warningParts = new Set<number>();
+      for (const { check } of group.links) {
+        const part = check!.multipart!.part;
+        if (check!.status === 'online') onlineParts.add(part);
+        if (check!.status === 'warning') warningParts.add(part);
+      }
+      group.online = onlineParts.size;
+      group.warnings = warningParts.size;
+      group.missing = group.expected - new Set([...onlineParts, ...warningParts]).size;
     }
     return [...groups.values()];
   });
@@ -412,11 +442,22 @@ export class DownloadsView implements OnInit, OnDestroy {
   readonly filteredCaptureGroups = computed(() => {
     const activeFilter = this.captureFilter();
     if (activeFilter === 'all') return this.captureGroups();
-    return this.captureGroups().filter((group) =>
-      activeFilter === 'online'
-        ? group.online > 0
-        : group.links.some((link) => link.check && link.check.status !== 'online'),
-    );
+    return this.captureGroups()
+      .map((group) => {
+        const links = group.links.filter(({ check }) => {
+          if (!check) return false;
+          return activeFilter === 'issues'
+            ? !this.canSelectLink(check.status)
+            : check.status === activeFilter;
+        });
+        return {
+          ...group,
+          links,
+          selected: links.filter((item) => item.selected).length,
+          selectable: links.filter((item) => this.canSelectLink(item.check?.status)).length,
+        };
+      })
+      .filter((group) => group.links.length);
   });
 
   readonly downloadGroups = computed(() => this.snapshot()?.groups ?? []);
@@ -689,7 +730,10 @@ export class DownloadsView implements OnInit, OnDestroy {
                   message:
                     error instanceof Error ? error.message : 'No se pudo comprobar el enlace.',
                 }));
-              return [item.id, { ...item, check, selected: check.status === 'online' }] as const;
+              const selected = item.check
+                ? item.selected && this.canSelectLink(check.status)
+                : check.status === 'online';
+              return [item.id, { ...item, check, selected }] as const;
             }),
           ),
         );
@@ -702,10 +746,14 @@ export class DownloadsView implements OnInit, OnDestroy {
     }
   }
 
+  canSelectLink(status?: DownloadLinkStatus) {
+    return status === 'online' || status === 'warning';
+  }
+
   selectLink(id: string, selected: boolean) {
     this.captured.update((items) =>
       items.map((item) =>
-        item.id === id && item.check?.status === 'online' ? { ...item, selected } : item,
+        item.id === id && this.canSelectLink(item.check?.status) ? { ...item, selected } : item,
       ),
     );
   }
@@ -714,7 +762,7 @@ export class DownloadsView implements OnInit, OnDestroy {
     const ids = new Set(group.links.map((item) => item.id));
     this.captured.update((items) =>
       items.map((item) =>
-        ids.has(item.id) && item.check?.status === 'online' ? { ...item, selected } : item,
+        ids.has(item.id) && this.canSelectLink(item.check?.status) ? { ...item, selected } : item,
       ),
     );
   }
@@ -725,15 +773,18 @@ export class DownloadsView implements OnInit, OnDestroy {
     );
   }
 
+  clearCaptureSelection() {
+    this.captured.update((items) =>
+      items.map((item) => (item.selected ? { ...item, selected: false } : item)),
+    );
+  }
+
   removeCaptured(id: string) {
     this.captured.update((items) => items.filter((item) => item.id !== id));
   }
 
-  removeUnavailableCaptured() {
-    this.captured.update((items) =>
-      items.filter((item) => !item.check || item.check.status === 'online'),
-    );
-    if (this.captureFilter() === 'issues') this.captureFilter.set('all');
+  removeOfflineCaptured() {
+    this.captured.update((items) => items.filter((item) => item.check?.status !== 'offline'));
   }
 
   clearCaptured() {
@@ -749,7 +800,7 @@ export class DownloadsView implements OnInit, OnDestroy {
     const incompleteNames: string[] = [];
     for (const group of this.captureGroups()) {
       const selected = group.links.filter(
-        (item) => item.selected && item.check?.status === 'online',
+        (item) => item.selected && this.canSelectLink(item.check?.status),
       );
       if (!selected.length) continue;
       const parts = new Set(selected.map((item) => item.check?.multipart?.part));
@@ -1168,7 +1219,8 @@ export class DownloadsView implements OnInit, OnDestroy {
   linkStatusTone(status?: DownloadLinkStatus): 'ok' | 'warn' | 'err' | 'muted' {
     if (status === 'online') return 'ok';
     if (status === 'offline') return 'err';
-    if (status === 'captcha' || status === 'account-required') return 'warn';
+    if (status === 'warning' || status === 'captcha' || status === 'account-required')
+      return 'warn';
     return 'muted';
   }
 

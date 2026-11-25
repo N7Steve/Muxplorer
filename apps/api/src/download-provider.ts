@@ -37,7 +37,7 @@ export const DOWNLOAD_PROVIDER = Symbol('DownloadProvider');
 export class HostDownloadError extends Error {
   constructor(
     message: string,
-    readonly status: Exclude<DownloadLinkStatus, 'online'> = 'unknown',
+    readonly status: Exclude<DownloadLinkStatus, 'online' | 'warning'> = 'unknown',
   ) {
     super(message);
   }

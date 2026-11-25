@@ -58,7 +58,8 @@ export interface DownloadAccount {
   status?: DownloadAccountStatus;
   checkedAt?: string;
 }
-export type DownloadLinkStatus = 'online' | 'offline' | 'captcha' | 'account-required' | 'unknown';
+export type DownloadLinkStatus =
+  'online' | 'warning' | 'offline' | 'captcha' | 'account-required' | 'unknown';
 export interface DownloadLinkCheck {
   status: DownloadLinkStatus;
   name?: string;
